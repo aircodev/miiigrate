@@ -4,7 +4,7 @@ use iii_helpers::observability::OtelConfig;
 use iii_sdk::{register_worker, InitOptions, RegisterFunction};
 use miiigrate::config::WorkerConfig;
 use miiigrate::configuration;
-use miiigrate::handlers::{status, up, AppState};
+use miiigrate::handlers::{codegen, create, status, up, AppState};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -118,6 +118,43 @@ async fn main() -> Result<()> {
         );
     }
 
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::create",
+            RegisterFunction::new_async(move |req: create::CreateReq| {
+                let st = st.clone();
+                async move {
+                    create::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Scaffold a new migration file `<dir>/<YYYYMMDDHHMMSS>_<name>.sql` and \
+                 return its path.",
+            ),
+        );
+    }
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::codegen",
+            RegisterFunction::new_async(move |req: codegen::CodegenReq| {
+                let st = st.clone();
+                async move {
+                    codegen::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Introspect the schema through database::query and write TypeScript \
+                 types (one interface per table plus an aggregate Database type).",
+            ),
+        );
+    }
+
     if auto {
         // Best-effort startup migration: a failure is loud but does not kill
         // the worker — migrate::status stays available for diagnosis.
@@ -132,7 +169,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    tracing::info!("miiigrate worker registered 2 functions, waiting for invocations");
+    tracing::info!("miiigrate worker registered 4 functions, waiting for invocations");
     wait_for_shutdown_signal().await?;
     tracing::info!("miiigrate worker shutting down");
     iii.shutdown_async().await;

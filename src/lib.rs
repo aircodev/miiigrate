@@ -8,6 +8,7 @@
 //! live under the `migrate::` namespace (`migrate::up`, `migrate::status`,
 //! `migrate::create`, `migrate::codegen`).
 
+pub mod codegen;
 pub mod config;
 pub mod configuration;
 pub mod db;

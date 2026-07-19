@@ -1,0 +1,7 @@
+[
+  { "enum_name": "mood", "label": "happy" },
+  { "enum_name": "mood", "label": "sad" },
+  { "enum_name": "order_status", "label": "pending" },
+  { "enum_name": "order_status", "label": "shipped" },
+  { "enum_name": "order_status", "label": "it's done" }
+]

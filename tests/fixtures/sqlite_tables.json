@@ -1,0 +1,16 @@
+{
+  "_iii_migrations": [
+    { "name": "name", "type": "TEXT", "notnull": 1, "pk": 1 },
+    { "name": "checksum", "type": "TEXT", "notnull": 1, "pk": 0 },
+    { "name": "applied_at", "type": "TEXT", "notnull": 1, "pk": 0 }
+  ],
+  "users": [
+    { "name": "id", "type": "INTEGER", "notnull": 0, "pk": 1 },
+    { "name": "name", "type": "TEXT", "notnull": 1, "pk": 0 },
+    { "name": "email", "type": "TEXT", "notnull": 0, "pk": 0 },
+    { "name": "score", "type": "REAL", "notnull": 0, "pk": 0 },
+    { "name": "avatar", "type": "BLOB", "notnull": 0, "pk": 0 },
+    { "name": "is_admin", "type": "BOOLEAN", "notnull": 1, "pk": 0 },
+    { "name": "created_at", "type": "DATETIME", "notnull": 1, "pk": 0 }
+  ]
+}
