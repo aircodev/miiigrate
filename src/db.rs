@@ -112,7 +112,11 @@ fn map_sdk_error(e: iii_sdk::errors::Error) -> DbCallError {
                     ),
                 };
             }
-            match serde_json::from_str::<Value>(&message) {
+            // The database worker's structured body is a JSON object, but the
+            // SDK dispatch prefixes it ("handler error: {...}") — parse from
+            // the first `{`.
+            let json_part = message.find('{').map(|i| &message[i..]).unwrap_or("");
+            match serde_json::from_str::<Value>(json_part) {
                 Ok(body) if body.get("code").is_some() => {
                     let worker_code = body["code"].as_str().map(String::from);
                     let failed_index = body
@@ -274,9 +278,11 @@ mod tests {
 
     #[test]
     fn remote_handler_body_is_parsed_for_stable_code() {
+        // Real wire shape: the SDK prefixes Handler bodies with "handler
+        // error: " before they reach the caller as Remote.message.
         let e = iii_sdk::errors::Error::Remote {
             code: "invocation_failed".into(),
-            message: r#"{"code":"DRIVER_ERROR","driver":"sqlite","message":"no such table","failed_index":1}"#.into(),
+            message: r#"handler error: {"code":"DRIVER_ERROR","driver":"sqlite","message":"no such table","failed_index":1}"#.into(),
             stacktrace: None,
         };
         match map_sdk_error(e) {

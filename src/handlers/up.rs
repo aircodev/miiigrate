@@ -107,8 +107,11 @@ fn build_batch(
 
     let mut batch = Vec::with_capacity(file_statements.len() + 2);
     if dialect == Dialect::Postgres {
+        // `::text` because pg_advisory_xact_lock returns `void`, which the
+        // database worker cannot decode as a result column; the cast yields
+        // an empty string and changes nothing about the lock.
         batch.push(TxStatement::new(format!(
-            "SELECT pg_advisory_xact_lock({})",
+            "SELECT pg_advisory_xact_lock({})::text AS locked",
             advisory_lock_key()
         )));
     }
@@ -128,15 +131,25 @@ pub async fn handle(state: &AppState, _req: UpReq) -> Result<UpResp, MigrateErro
     let dialect = state.dialect().await?;
     let files = migrations::list_migrations(Path::new(&state.config.dir))?;
 
-    // Create the tracking table before first read. Idempotent DDL.
-    db::execute(
+    // Create the tracking table before first read. The DDL is idempotent,
+    // but two migrators racing on `CREATE TABLE IF NOT EXISTS` can still
+    // collide inside Postgres (duplicate key on pg_type/pg_class) — if the
+    // statement fails and the table exists anyway, the goal is met.
+    if let Err(e) = db::execute(
         &state.iii,
         &state.config.db,
         &create_tracking_table_sql(dialect),
         vec![],
     )
     .await
-    .map_err(DbCallError::into_migrate_error)?;
+    {
+        if !tracking::table_exists(state).await.unwrap_or(false) {
+            return Err(e.into_migrate_error());
+        }
+        tracing::debug!(
+            "tracking-table DDL raced a concurrent migrator; table exists — continuing"
+        );
+    }
 
     let applied_rows = tracking::fetch_applied(state).await?;
 

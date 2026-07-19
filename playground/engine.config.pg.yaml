@@ -1,0 +1,9 @@
+# Template — run-postgres.sh copies this to .run-pg/config.yaml.
+workers:
+  - name: database
+    config:
+      databases:
+        primary:
+          url: postgres://postgres:miiigrate@127.0.0.1:55432/postgres
+          tls:
+            mode: disable
