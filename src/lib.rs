@@ -14,6 +14,7 @@ pub mod db;
 pub mod error;
 pub mod handlers;
 pub mod migrations;
+pub mod splitter;
 
 /// Worker name — also the registry package, binary, and configuration id.
 pub fn worker_name() -> &'static str {

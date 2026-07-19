@@ -2,6 +2,7 @@
 
 pub mod status;
 pub mod tracking;
+pub mod up;
 
 use std::sync::Arc;
 

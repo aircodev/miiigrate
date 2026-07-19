@@ -4,7 +4,7 @@ use iii_helpers::observability::OtelConfig;
 use iii_sdk::{register_worker, InitOptions, RegisterFunction};
 use miiigrate::config::WorkerConfig;
 use miiigrate::configuration;
-use miiigrate::handlers::{status, AppState};
+use miiigrate::handlers::{status, up, AppState};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -80,11 +80,7 @@ async fn main() -> Result<()> {
         auto = cfg.auto,
         "configuration loaded"
     );
-    if cfg.auto {
-        // Wired to migrate::up once it exists (next milestone).
-        tracing::warn!("config `auto: true` is not honored yet — migrate::up is not implemented");
-    }
-
+    let auto = cfg.auto;
     let state = AppState::new(iii.clone(), cfg);
 
     {
@@ -102,8 +98,41 @@ async fn main() -> Result<()> {
             .description("Report applied, pending, and checksum-mismatched migrations. Read-only."),
         );
     }
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::up",
+            RegisterFunction::new_async(move |req: up::UpReq| {
+                let st = st.clone();
+                async move {
+                    up::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Apply all pending migrations, each in one atomic database::transaction \
+                 batch. Refuses to run when an applied file's checksum changed \
+                 (CHECKSUM_MISMATCH).",
+            ),
+        );
+    }
 
-    tracing::info!("miiigrate worker registered 1 function, waiting for invocations");
+    if auto {
+        // Best-effort startup migration: a failure is loud but does not kill
+        // the worker — migrate::status stays available for diagnosis.
+        match up::handle(&state, up::UpReq::default()).await {
+            Ok(resp) => tracing::info!(
+                applied = resp.applied.len(),
+                skipped = resp.skipped,
+                duration_ms = resp.duration_ms,
+                "auto migration run complete"
+            ),
+            Err(e) => tracing::error!(error = %e, "auto migration run failed"),
+        }
+    }
+
+    tracing::info!("miiigrate worker registered 2 functions, waiting for invocations");
     wait_for_shutdown_signal().await?;
     tracing::info!("miiigrate worker shutting down");
     iii.shutdown_async().await;
