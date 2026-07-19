@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-test:
+    name: fmt + clippy + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: lint-test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            linker_pkg: gcc-aarch64-linux-gnu
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross linker
+        if: matrix.linker_pkg != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.linker_pkg }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miiigrate-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/miiigrate
