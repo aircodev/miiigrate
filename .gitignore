@@ -1,5 +1,2 @@
 /target
-playground/data/
-playground/config/
-playground/*.db
-playground/*.log
+playground/.run/

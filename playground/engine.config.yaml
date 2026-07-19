@@ -1,0 +1,8 @@
+# Template — run.sh copies this to .run/config.yaml (the engine consumes the
+# inline config: blocks on first boot and rewrites the file in place).
+workers:
+  - name: database
+    config:
+      databases:
+        primary:
+          url: sqlite:./playground.db

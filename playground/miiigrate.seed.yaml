@@ -1,0 +1,4 @@
+db: primary
+dir: ./migrations
+auto: false
+types_out: ./.run/db.types.ts
