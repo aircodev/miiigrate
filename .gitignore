@@ -1,0 +1,5 @@
+/target
+playground/data/
+playground/config/
+playground/*.db
+playground/*.log

@@ -1,0 +1,36 @@
+[workspace]
+
+[package]
+name = "miiigrate"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "SQL migrations for iii — forward-only migrations and TypeScript codegen, driven entirely through the database worker."
+license = "Apache-2.0"
+
+[[bin]]
+name = "miiigrate"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+iii-sdk = "=0.21.6"
+iii-helpers = "=0.21.6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yml = "0.0.12"
+schemars = { version = "0.8", features = ["chrono"] }
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"

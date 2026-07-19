@@ -1,0 +1,7 @@
+iii: v1
+name: miiigrate
+language: rust
+deploy: binary
+manifest: Cargo.toml
+bin: miiigrate
+description: Forward-only SQL migrations for iii — apply, track, and inspect migrations through the database worker, plus TypeScript codegen of your schema.

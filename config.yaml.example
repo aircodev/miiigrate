@@ -1,0 +1,12 @@
+# Optional seed file for first-time registration (--config ./config.yaml.example).
+#
+# After the first boot, the runtime source of truth is the `configuration`
+# worker entry `miiigrate`, persisted at ./data/configuration/miiigrate.yaml.
+# Engine-managed deployments inline this block under the worker entry in
+# config.yaml; the engine delivers it via --config.
+
+db: primary            # database name in the database worker's configuration
+dir: ./migrations      # directory of YYYYMMDDHHMMSS_slug.sql files
+auto: false            # true = run migrate::up at worker startup
+# types_out: ./db.types.ts   # output of migrate::codegen (optional)
+# dialect: postgres          # override auto-detection (postgres | sqlite)
