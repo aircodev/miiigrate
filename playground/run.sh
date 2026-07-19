@@ -161,6 +161,21 @@ assert u["applied"] == [] and u["skipped"] == 2, u
 print("OK 4: second up is a no-op (skipped 2)")
 PY
 
+# ---------- 4b. CRLF rewrite is NOT a mismatch ----------
+python3 - "$RUN_DIR/migrations/20260101120000_create_users.sql" <<'PY'
+import sys
+p = sys.argv[1]
+data = open(p, 'rb').read().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+open(p, 'wb').write(data)
+PY
+UP_CRLF=$(trigger migrate::up '{}') || { echo "$UP_CRLF"; fail "up after CRLF rewrite errored"; }
+python3 - "$UP_CRLF" <<'PY'
+import json, sys
+u = json.loads(sys.argv[1])
+assert u["applied"] == [] and u["skipped"] == 2, u
+print("OK 4b: CRLF rewrite of an applied file is not a mismatch")
+PY
+
 # ---------- 5. tamper an applied migration ----------
 echo "-- tampered after apply" >> "$RUN_DIR/migrations/20260101120000_create_users.sql"
 

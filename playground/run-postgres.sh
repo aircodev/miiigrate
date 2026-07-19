@@ -159,7 +159,7 @@ grep -q "id: string;" "$TYPES" || fail "bigserial id should map to string"
 grep -q "balance: string;" "$TYPES" || fail "numeric should map to string"
 grep -q "tags: string\[\] | null;" "$TYPES" || fail "text[] should map to string[] | null"
 grep -q "metadata: Json | null;" "$TYPES" || fail "jsonb should map to Json | null"
-grep -q "created_at: Date | string;" "$TYPES" || fail "timestamptz should map to Date | string"
+grep -q "created_at: string;" "$TYPES" || fail "timestamptz should map to string (RFC 3339 over JSON)"
 grep -q "mood: Mood;" "$TYPES" || fail "enum column should reference Mood"
 echo "OK 5b: db.types.ts enum + scalar mappings check out"
 

@@ -5,9 +5,10 @@
 //! the `_iii_migrations` tracking table. Files sort lexicographically, which
 //! matches chronological order thanks to the fixed-width timestamp prefix.
 //!
-//! Checksums are SHA-256 over the raw file bytes, hex-encoded lowercase. No
-//! normalization: editing whitespace or line endings in an applied migration
-//! is a mismatch, by design.
+//! Checksums are SHA-256 over the file bytes with line endings normalized
+//! (`\r\n` → `\n`), hex-encoded lowercase. The normalization means a file
+//! rewritten with CRLF endings (Windows editors, `core.autocrlf`) keeps its
+//! identity; any other edit to an applied migration is a mismatch, by design.
 
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -49,7 +50,7 @@ pub fn validate_name(file_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// SHA-256 lowercase hex of `bytes`.
+/// SHA-256 lowercase hex of `bytes`, as-is.
 pub fn checksum_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -59,6 +60,24 @@ pub fn checksum_bytes(bytes: &[u8]) -> String {
         out.push_str(&format!("{b:02x}"));
     }
     out
+}
+
+/// Checksum of a migration file: SHA-256 over the bytes with `\r\n`
+/// normalized to `\n`, so a CRLF rewrite by a Windows machine does not
+/// change a migration's identity. Lone `\r` bytes are preserved — they are
+/// content (e.g. inside a string literal), not a line-ending convention.
+pub fn checksum_migration(bytes: &[u8]) -> String {
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
+            i += 1; // skip the \r, keep the \n
+            continue;
+        }
+        normalized.push(bytes[i]);
+        i += 1;
+    }
+    checksum_bytes(&normalized)
 }
 
 /// List and checksum all `*.sql` files in `dir`, sorted by name.
@@ -99,7 +118,7 @@ pub fn list_migrations(dir: &Path) -> Result<Vec<MigrationFile>, MigrateError> {
         })?;
         files.push(MigrationFile {
             name,
-            checksum: checksum_bytes(&bytes),
+            checksum: checksum_migration(&bytes),
             path,
         });
     }
@@ -144,6 +163,30 @@ mod tests {
         assert_eq!(
             checksum_bytes(b"hello"),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[test]
+    fn migration_checksum_is_line_ending_invariant() {
+        let lf = b"CREATE TABLE a (\n  id int\n);\n";
+        let crlf = b"CREATE TABLE a (\r\n  id int\r\n);\r\n";
+        assert_eq!(checksum_migration(lf), checksum_migration(crlf));
+        // Normalized CRLF equals the plain LF hash.
+        assert_eq!(checksum_migration(crlf), checksum_bytes(lf));
+        // Any real edit still changes the checksum.
+        assert_ne!(
+            checksum_migration(lf),
+            checksum_migration(b"CREATE TABLE a (\n  id text\n);\n")
+        );
+    }
+
+    #[test]
+    fn lone_carriage_return_is_content_not_line_ending() {
+        // \r inside a string literal is data; stripping it would let two
+        // semantically different files collide.
+        assert_ne!(
+            checksum_migration(b"SELECT 'a\rb';"),
+            checksum_migration(b"SELECT 'ab';")
         );
     }
 

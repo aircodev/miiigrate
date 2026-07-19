@@ -37,7 +37,7 @@ fn pg_fixture_produces_expected_ir() {
     assert!(by_name("mood").nullable);
     assert_eq!(by_name("tags").ts_type, "string[]"); // _text array
     assert_eq!(by_name("metadata").ts_type, "Json"); // jsonb
-    assert_eq!(by_name("created_at").ts_type, "Date | string");
+    assert_eq!(by_name("created_at").ts_type, "string"); // RFC 3339 over JSON
 
     assert_eq!(ir.enums.len(), 2);
     assert_eq!(ir.enums[0].name, "mood");
@@ -61,10 +61,10 @@ fn pg_fixture_emits_expected_typescript() {
     assert!(ts.contains("  mood: Mood | null;"));
     assert!(ts.contains("  tags: string[] | null;"));
     assert!(ts.contains("  metadata: Json | null;"));
-    assert!(ts.contains("  created_at: Date | string;"));
-    assert!(ts.contains("  birth_date: Date | string | null;"));
-    assert!(ts.contains("  avatar: Buffer | null;"));
-    // Property with invalid identifier chars is quoted.
+    assert!(ts.contains("  created_at: string;")); // RFC 3339 over JSON
+    assert!(ts.contains("  birth_date: string | null;"));
+    assert!(ts.contains("  avatar: string | null;")); // base64 over JSON
+                                                      // Property with invalid identifier chars is quoted.
     assert!(ts.contains("  'weird-col name': string | null;"));
     // Aggregate type references raw table names.
     assert!(ts.contains("export interface Database {"));
@@ -100,7 +100,7 @@ fn sqlite_fixture_produces_expected_typescript() {
     assert!(ts.contains("  name: string;"));
     assert!(ts.contains("  email: string | null;"));
     assert!(ts.contains("  score: number | null;"));
-    assert!(ts.contains("  avatar: Buffer | null;"));
+    assert!(ts.contains("  avatar: string | null;")); // base64 over JSON
     assert!(ts.contains("  is_admin: boolean;"));
     assert!(ts.contains("  created_at: string;")); // DATETIME affinity
     assert!(ts.contains("  users: Users;"));
@@ -123,12 +123,12 @@ fn pg_type_mapping_table() {
         ("text", "text", "string"),
         ("character varying", "varchar", "string"),
         ("uuid", "uuid", "string"),
-        ("date", "date", "Date | string"),
-        ("timestamp with time zone", "timestamptz", "Date | string"),
-        ("timestamp without time zone", "timestamp", "Date | string"),
+        ("date", "date", "string"),
+        ("timestamp with time zone", "timestamptz", "string"),
+        ("timestamp without time zone", "timestamp", "string"),
         ("json", "json", "Json"),
         ("jsonb", "jsonb", "Json"),
-        ("bytea", "bytea", "Buffer"),
+        ("bytea", "bytea", "string"),
         ("interval", "interval", "string"),
         ("USER-DEFINED", "mood", "Mood"),
         ("USER-DEFINED", "some_extension_type", "unknown"),
@@ -152,8 +152,8 @@ fn sqlite_type_mapping_table() {
         ("TEXT", "string"),
         ("VARCHAR(80)", "string"),
         ("CLOB", "string"),
-        ("BLOB", "Buffer"),
-        ("", "Buffer"),
+        ("BLOB", "string"),
+        ("", "string"),
         ("REAL", "number"),
         ("DOUBLE", "number"),
         ("NUMERIC(10,2)", "number"),

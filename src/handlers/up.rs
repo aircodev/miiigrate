@@ -181,7 +181,7 @@ pub async fn handle(state: &AppState, _req: UpReq) -> Result<UpResp, MigrateErro
         // with an editor save. Recompute so the tracking row always matches
         // the bytes we actually executed.
         let file = MigrationFile {
-            checksum: migrations::checksum_bytes(sql.as_bytes()),
+            checksum: migrations::checksum_migration(sql.as_bytes()),
             ..file.clone()
         };
         let (batch, offset) = build_batch(dialect, &file, &sql)?;
