@@ -2,7 +2,7 @@
 
 [package]
 name = "miiigrate"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 publish = false
 description = "SQL migrations for iii — forward-only migrations and TypeScript codegen, driven entirely through the database worker."
