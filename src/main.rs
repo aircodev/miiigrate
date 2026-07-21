@@ -1,9 +1,12 @@
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use iii_helpers::observability::OtelConfig;
 use iii_sdk::{register_worker, InitOptions, RegisterFunction};
 use miiigrate::config::WorkerConfig;
 use miiigrate::configuration;
+use miiigrate::error::MigrateError;
 use miiigrate::handlers::{codegen, create, status, up, AppState};
 
 #[derive(Parser, Debug)]
@@ -156,17 +159,7 @@ async fn main() -> Result<()> {
     }
 
     if auto {
-        // Best-effort startup migration: a failure is loud but does not kill
-        // the worker — migrate::status stays available for diagnosis.
-        match up::handle(&state, up::UpReq::default()).await {
-            Ok(resp) => tracing::info!(
-                applied = resp.applied.len(),
-                skipped = resp.skipped,
-                duration_ms = resp.duration_ms,
-                "auto migration run complete"
-            ),
-            Err(e) => tracing::error!(error = %e, "auto migration run failed"),
-        }
+        run_auto_migration(&state).await;
     }
 
     tracing::info!("miiigrate worker registered 4 functions, waiting for invocations");
@@ -174,6 +167,51 @@ async fn main() -> Result<()> {
     tracing::info!("miiigrate worker shutting down");
     iii.shutdown_async().await;
     Ok(())
+}
+
+/// Total window during which the startup auto-run retries while the database
+/// worker is unavailable.
+const AUTO_RETRY_BUDGET: Duration = Duration::from_secs(120);
+/// Backoff ceiling between two auto-run attempts.
+const AUTO_RETRY_MAX_DELAY: Duration = Duration::from_secs(10);
+
+/// Best-effort startup migration. The database worker may register after us
+/// (engine-managed boots and docker compose make no ordering guarantee), so
+/// `DATABASE_WORKER_UNAVAILABLE` is retried with capped backoff for up to
+/// [`AUTO_RETRY_BUDGET`]. Any other error — and exhaustion of the budget — is
+/// loud but does not kill the worker: `migrate::status` and `migrate::up`
+/// stay available for diagnosis and manual recovery.
+async fn run_auto_migration(state: &AppState) {
+    let started = tokio::time::Instant::now();
+    let mut delay = Duration::from_secs(1);
+    loop {
+        match up::handle(state, up::UpReq::default()).await {
+            Ok(resp) => {
+                tracing::info!(
+                    applied = resp.applied.len(),
+                    skipped = resp.skipped,
+                    duration_ms = resp.duration_ms,
+                    "auto migration run complete"
+                );
+                return;
+            }
+            Err(MigrateError::DatabaseWorkerUnavailable { message })
+                if started.elapsed() + delay <= AUTO_RETRY_BUDGET =>
+            {
+                tracing::warn!(
+                    error = %message,
+                    retry_in_s = delay.as_secs(),
+                    "database worker not ready; retrying auto migration run"
+                );
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(AUTO_RETRY_MAX_DELAY);
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "auto migration run failed");
+                return;
+            }
+        }
+    }
 }
 
 /// Strip userinfo (username:password) from a URL before logging it.

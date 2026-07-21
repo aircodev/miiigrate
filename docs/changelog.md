@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- `auto: true` now retries the startup migration run while the `database`
+  worker is unavailable (capped exponential backoff, 2-minute budget).
+  Previously the run was attempted exactly once: when miiigrate registered
+  before the database worker — the common case under docker compose or an
+  engine-managed boot — the auto run failed with
+  `DATABASE_WORKER_UNAVAILABLE` and was never retried, silently leaving
+  migrations unapplied. Other errors still fail fast, and the worker stays up
+  either way.
+
 ## 0.1.1 — 2026-07-20
 
 Documentation release — no functional change.
