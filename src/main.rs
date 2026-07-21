@@ -28,8 +28,15 @@ struct Cli {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                // The helpers' OTel side channel logs every pre-connection
+                // attempt at ERROR while iii-sdk already reports the same
+                // condition as a WARN retry; drop the duplicate noise by
+                // default. Setting RUST_LOG replaces this filter entirely.
+                tracing_subscriber::EnvFilter::new(
+                    "info,iii_helpers::observability::telemetry::connection=off",
+                )
+            }),
         )
         .init();
 

@@ -10,6 +10,14 @@
   `DATABASE_WORKER_UNAVAILABLE` and was never retried, silently leaving
   migrations unapplied. Other errors still fail fast, and the worker stays up
   either way.
+- Clean startup when the engine comes up after miiigrate. The
+  `configuration::register`/`get` calls now retry transient failures
+  (timeout, not connected, function not registered yet) with capped backoff
+  under the same 2-minute budget instead of crashing the worker after ~16 s;
+  real errors from the configuration worker still fail fast. The default log
+  filter also silences `iii-helpers`' OTel connection module, which logged
+  every pre-connection attempt at ERROR while iii-sdk already reports the
+  same condition as a WARN retry (set `RUST_LOG` to override).
 
 ## 0.1.1 — 2026-07-20
 
