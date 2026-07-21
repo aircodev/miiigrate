@@ -121,7 +121,9 @@ async fn trigger_with_retry(
                 delay = (delay * 2).min(CONFIG_RETRY_MAX_DELAY);
             }
             Err(e) => {
-                return Err(format!("{function_id} failed after {attempt} attempts: {e}"));
+                return Err(format!(
+                    "{function_id} failed after {attempt} attempts: {e}"
+                ));
             }
         }
     }
