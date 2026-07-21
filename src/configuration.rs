@@ -16,7 +16,12 @@ use crate::config::WorkerConfig;
 
 pub const CONFIG_ID: &str = "miiigrate";
 const CONFIG_TIMEOUT_MS: u64 = 5_000;
-const CONFIG_RETRIES: u32 = 3;
+/// Total window during which transient failures (engine still starting:
+/// timeout, not connected, function not registered yet) are retried before
+/// giving up. Aligned with the auto-run retry budget in `main.rs`.
+const CONFIG_RETRY_BUDGET: Duration = Duration::from_secs(120);
+/// Backoff ceiling between two attempts.
+const CONFIG_RETRY_MAX_DELAY: Duration = Duration::from_secs(5);
 
 /// Register the `miiigrate` configuration schema with the configuration
 /// worker. When `seed` is present, its value is installed as `initial_value`.
@@ -70,13 +75,30 @@ async fn try_get_config_value(iii: &IIIClient) -> Result<Option<Value>, String> 
     }
 }
 
+/// True for failures that resolve on their own once the engine and its
+/// built-in workers finish starting: invocation timeout, socket not yet
+/// connected, or the target function not registered yet. Anything else (a
+/// real error from the configuration worker, e.g. schema rejection) will not
+/// improve with time and must fail fast.
+fn is_transient(e: &iii_sdk::errors::Error) -> bool {
+    use iii_sdk::errors::Error;
+    match e {
+        Error::Timeout | Error::NotConnected => true,
+        Error::Remote { code, .. } => code == "function_not_found",
+        _ => false,
+    }
+}
+
 async fn trigger_with_retry(
     iii: &IIIClient,
     function_id: &str,
     payload: Value,
 ) -> Result<Value, String> {
-    let mut last_err = String::new();
-    for attempt in 1..=CONFIG_RETRIES {
+    let started = tokio::time::Instant::now();
+    let mut delay = Duration::from_millis(250);
+    let mut attempt: u32 = 0;
+    loop {
+        attempt += 1;
         match iii
             .trigger(TriggerRequest {
                 function_id: function_id.to_string(),
@@ -87,21 +109,22 @@ async fn trigger_with_retry(
             .await
         {
             Ok(v) => return Ok(v),
+            Err(e) if is_transient(&e) && started.elapsed() + delay <= CONFIG_RETRY_BUDGET => {
+                tracing::warn!(
+                    function_id,
+                    attempt,
+                    error = %e,
+                    retry_in_ms = delay.as_millis() as u64,
+                    "engine not ready for configuration RPC; retrying"
+                );
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(CONFIG_RETRY_MAX_DELAY);
+            }
             Err(e) => {
-                last_err = e.to_string();
-                if attempt < CONFIG_RETRIES {
-                    tracing::warn!(
-                        function_id,
-                        attempt,
-                        error = %last_err,
-                        "configuration RPC failed; retrying"
-                    );
-                    tokio::time::sleep(Duration::from_millis(250 * u64::from(attempt))).await;
-                }
+                return Err(format!(
+                    "{function_id} failed after {attempt} attempts: {e}"
+                ));
             }
         }
     }
-    Err(format!(
-        "{function_id} failed after {CONFIG_RETRIES} attempts: {last_err}"
-    ))
 }
