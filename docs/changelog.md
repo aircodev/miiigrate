@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — 2026-07-21
 
 - `auto: true` now retries the startup migration run while the `database`
   worker is unavailable (capped exponential backoff, 2-minute budget).
