@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Revert the default log filter introduced in 0.1.2 that silenced
+  `iii-helpers`' OTel connection module. Those transient pre-connection
+  ERROR logs originate in `iii-helpers` (out of miiigrate's scope) and
+  should be addressed there; deployments that want them quiet can set
+  `RUST_LOG=info,iii_helpers::observability::telemetry::connection=off`.
+
 ## 0.1.2 — 2026-07-21
 
 - `auto: true` now retries the startup migration run while the `database`
