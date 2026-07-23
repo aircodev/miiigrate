@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Skill: states that `future_dated` entries never block schema work — the
+  resolution is automatic (`migrate::create` timestamps are monotonic), so
+  an agent must not stall on an anomaly that is already handled.
 - Skill: documents that `database::query` is read-only (writes fail with
   SQLSTATE 25006) — ad-hoc writes go through `database::execute` or
   `database::transaction`.

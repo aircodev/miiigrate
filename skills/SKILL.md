@@ -40,8 +40,12 @@ migration as skipped, not failed.
 - Apply with `migrate::up`, then check the response: when `types_path` is
   present the TypeScript types were already regenerated; when it is absent
   and the project has a `types_out`, run `migrate::codegen` yourself.
-- Before any schema work, call `migrate::status` and resolve `mismatched`,
-  `missing`, or `future_dated` entries before adding new migrations.
+- Before any schema work, call `migrate::status`. `mismatched` and
+  `missing` entries must be resolved first. `future_dated` entries do NOT
+  block you: an applied one is harmless (it expires once the clock catches
+  up), and a pending one is fixed by scaffolding through `migrate::create`
+  as usual — its timestamps are monotonic with existing files, so the new
+  file lands after the future-dated one. Never stall on `future_dated`.
 
 ## When to Use
 
