@@ -116,7 +116,9 @@ async fn main() -> Result<()> {
             .description(
                 "Apply all pending migrations, each in one atomic database::transaction \
                  batch. Refuses to run when an applied file's checksum changed \
-                 (CHECKSUM_MISMATCH).",
+                 (CHECKSUM_MISMATCH). When `codegen_on_up` is enabled (default with \
+                 `types_out` set), regenerates the TypeScript types after a run that \
+                 applied migrations.",
             ),
         );
     }
@@ -135,7 +137,8 @@ async fn main() -> Result<()> {
             })
             .description(
                 "Scaffold a new migration file `<dir>/<YYYYMMDDHHMMSS>_<name>.sql` and \
-                 return its path.",
+                 return its path. Always use this instead of hand-writing file names: \
+                 timestamps are guaranteed unique and monotonic with existing files.",
             ),
         );
     }

@@ -19,6 +19,7 @@ use serde_json::json;
 use std::path::Path;
 use std::time::Instant;
 
+use super::codegen;
 use super::tracking;
 use super::AppState;
 use crate::config::Dialect;
@@ -51,6 +52,12 @@ pub struct UpResp {
     /// or applied concurrently by another migrator while we ran.
     pub skipped: usize,
     pub duration_ms: u64,
+    /// Path written by the automatic post-run codegen (config
+    /// `codegen_on_up`). Absent when codegen is disabled, nothing was
+    /// applied, or codegen failed — a failure is logged but never undoes an
+    /// applied migration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub types_path: Option<String>,
 }
 
 /// Dialect-specific DDL for the tracking table. Idempotent.
@@ -170,9 +177,20 @@ pub async fn handle(state: &AppState, _req: UpReq) -> Result<UpResp, MigrateErro
     let mut applied = Vec::new();
     let mut skipped = applied_rows.len();
 
+    let now = chrono::Utc::now();
     for file in &files {
         if applied_rows.iter().any(|r| r.name == file.name) {
             continue; // already applied (counted in `skipped` above)
+        }
+        if migrations::is_future_dated(&file.name, now) {
+            // Applied anyway — refusing would brick `auto: true` boots — but
+            // the name breaks ordering for every migration created before
+            // the clock catches up.
+            tracing::warn!(
+                migration = %file.name,
+                "timestamp is in the future — hand-written name? scaffold with \
+                 migrate::create, which keeps timestamps monotonic"
+            );
         }
         let sql = std::fs::read_to_string(&file.path).map_err(|e| MigrateError::ConfigError {
             message: format!("reading {}: {e}", file.path.display()),
@@ -208,10 +226,25 @@ pub async fn handle(state: &AppState, _req: UpReq) -> Result<UpResp, MigrateErro
         }
     }
 
+    // Schema changed and a types destination is configured: refresh the
+    // generated types so they can never silently drift from the database.
+    let mut types_path = None;
+    if !applied.is_empty() && state.config.codegen_on_up_enabled() {
+        match codegen::handle(state, codegen::CodegenReq::default()).await {
+            Ok(resp) => types_path = Some(resp.path),
+            Err(e) => tracing::warn!(
+                error = %e,
+                "post-run codegen failed; migrations are applied — run \
+                 migrate::codegen manually"
+            ),
+        }
+    }
+
     Ok(UpResp {
         applied,
         skipped,
         duration_ms: started.elapsed().as_millis() as u64,
+        types_path,
     })
 }
 

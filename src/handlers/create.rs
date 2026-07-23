@@ -43,9 +43,23 @@ pub async fn handle(state: &AppState, req: CreateReq) -> Result<CreateResp, Migr
         message: format!("creating {}: {e}", dir.display()),
     })?;
 
-    // UTC timestamp; bump by one second on collision (two creates within the
-    // same second) so names stay unique and ordered.
+    // UTC timestamp, kept monotonic with the files already on disk: a
+    // hand-written future-dated migration must not make new names sort
+    // before it (lexicographic order is the apply order). Then bump by one
+    // second on collision (two creates within the same second) so names
+    // stay unique and ordered.
     let mut ts = Utc::now();
+    if let Some(latest) = latest_migration_timestamp(dir) {
+        let after_latest = latest + chrono::Duration::seconds(1);
+        if after_latest > ts {
+            tracing::warn!(
+                latest = %latest.format("%Y%m%d%H%M%S"),
+                "latest migration on disk is ahead of the clock (hand-written \
+                 name?); continuing after it to keep ordering monotonic"
+            );
+            ts = after_latest;
+        }
+    }
     let (name, path): (String, PathBuf) = loop {
         let name = format!("{}_{slug}.sql", ts.format("%Y%m%d%H%M%S"));
         let path = dir.join(&name);
@@ -75,12 +89,26 @@ pub async fn handle(state: &AppState, req: CreateReq) -> Result<CreateResp, Migr
     })
 }
 
+/// Largest timestamp among the well-formed migration files in `dir`.
+/// Lenient on purpose: unreadable entries and stray files are ignored here —
+/// `migrate::up`/`status` are the loud gate for those — so `create` always
+/// stays usable for authoring.
+fn latest_migration_timestamp(dir: &Path) -> Option<chrono::DateTime<Utc>> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| migrations::validate_name(name).is_ok())
+        .filter_map(|name| migrations::timestamp_of(&name))
+        .max()
+}
+
 #[cfg(test)]
 mod tests {
     // The handler needs an AppState (IIIClient) so filesystem behavior is
-    // covered by the slug validation below plus the playground; slug rules
-    // are the pure part.
-    use crate::migrations::validate_name;
+    // covered by the pure helpers below plus the playground.
+    use super::latest_migration_timestamp;
+    use crate::migrations::{timestamp_of, validate_name};
 
     #[test]
     fn generated_names_validate() {
@@ -88,5 +116,29 @@ mod tests {
             let name = format!("20260719143000_{slug}.sql");
             assert!(validate_name(&name).is_ok(), "{name}");
         }
+    }
+
+    #[test]
+    fn latest_timestamp_picks_max_and_ignores_strays() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("20260101000000_a.sql"), "").unwrap();
+        std::fs::write(tmp.path().join("20991231235959_future.sql"), "").unwrap();
+        std::fs::write(tmp.path().join("notes.sql"), "").unwrap(); // stray: ignored
+        std::fs::write(tmp.path().join("README.md"), "").unwrap();
+
+        assert_eq!(
+            latest_migration_timestamp(tmp.path()),
+            timestamp_of("20991231235959_future.sql")
+        );
+    }
+
+    #[test]
+    fn latest_timestamp_is_none_for_empty_or_missing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(latest_migration_timestamp(tmp.path()), None);
+        assert_eq!(
+            latest_migration_timestamp(std::path::Path::new("/nonexistent/miiigrate")),
+            None
+        );
     }
 }

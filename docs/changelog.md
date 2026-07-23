@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- `migrate::create` keeps timestamps monotonic with the files already on
+  disk: when the latest existing migration is dated ahead of the clock (a
+  hand-written name), the new file is stamped one second after it instead of
+  sorting before an applied migration.
+- Future-dated migration files are surfaced: `migrate::status` returns a new
+  `future_dated` list and `migrate::up` logs a warning before applying such
+  a file (5-minute clock-skew tolerance).
+- New `codegen_on_up` configuration: after a `migrate::up` that applied at
+  least one migration, `migrate::codegen` runs automatically so generated
+  types never drift from the schema. Enabled by default when `types_out` is
+  set; codegen failures are logged and never fail the run. `migrate::up` now
+  returns the written path as `types_path`.
+- Agent skill rewritten: triggers on any database/schema work, and states
+  the hard rules (always scaffold with `migrate::create`, one migration per
+  logical change, never edit applied files).
+
 - Revert the default log filter introduced in 0.1.2 that silenced
   `iii-helpers`' OTel connection module. Those transient pre-connection
   ERROR logs originate in `iii-helpers` (out of miiigrate's scope) and

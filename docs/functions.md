@@ -16,7 +16,9 @@ migrate::create ──▶ write your SQL ──▶ migrate::up ──▶ migrate
 Apply every pending migration, in file-name order.
 
 - **Payload**: `{}`
-- **Returns**: `{ "applied": ["<file names in order>"], "skipped": <n>, "duration_ms": <n> }`
+- **Returns**: `{ "applied": ["<file names in order>"], "skipped": <n>, "duration_ms": <n>, "types_path": "…" }`
+  — `types_path` is present only when the automatic post-run codegen wrote it
+  (see `codegen_on_up` in the configuration).
 
 Behaviour:
 
@@ -31,6 +33,14 @@ Behaviour:
 - Statement splitting is dialect-aware: a `;` inside `'strings'`, `E'…'`
   escapes, `"identifiers"`, `$tag$…$tag$` bodies (plpgsql functions), or
   nested `/* comments */` never splits a statement.
+- When `codegen_on_up` is enabled (default whenever `types_out` is set) and
+  at least one migration was applied, `migrate::codegen` runs afterwards so
+  the generated types never drift from the schema. A codegen failure is
+  logged and reported by the absent `types_path`, never rolled into the run:
+  the migrations stay applied.
+- A pending file whose timestamp prefix is ahead of the wall clock (beyond a
+  5-minute skew tolerance) is applied but logged as a warning: it is almost
+  certainly a hand-written name — scaffold with `migrate::create` instead.
 
 ## `migrate::status`
 
@@ -48,7 +58,8 @@ time, including while `migrate::up` is failing.
   "applied":    [{ "name": "…", "checksum": "…", "applied_at": "…" }],
   "pending":    [{ "name": "…", "checksum": "…" }],
   "mismatched": [{ "name": "…", "applied_checksum": "…", "file_checksum": "…", "applied_at": "…" }],
-  "missing":    [{ "name": "…", "checksum": "…", "applied_at": "…" }]
+  "missing":    [{ "name": "…", "checksum": "…", "applied_at": "…" }],
+  "future_dated": ["…"]
 }
 ```
 
@@ -57,6 +68,10 @@ time, including while `migrate::up` is failing.
 - `mismatched` — applied, but the file content changed since.
   `migrate::up` refuses to run while this list is non-empty.
 - `missing` — recorded as applied but the file no longer exists on disk.
+- `future_dated` — files on disk whose timestamp prefix is ahead of the wall
+  clock beyond a 5-minute skew tolerance: hand-written names. Harmless once
+  applied (`migrate::create` keeps new timestamps monotonic with them), but a
+  pending one should be renamed before apply.
 
 ## `migrate::create`
 
@@ -66,8 +81,12 @@ migrations directory if it does not exist yet.
 - **Payload**: `{ "name": "add_users" }` — slug of `[A-Za-z0-9_-]+`
 - **Returns**: `{ "name": "20260719143000_add_users.sql", "path": "./migrations/20260719143000_add_users.sql" }`
 
-The timestamp is the current UTC time. The file starts with a forward-only
-header comment; write your SQL below it.
+The timestamp is the current UTC time, kept monotonic with the files already
+on disk: when the latest existing migration is dated ahead of the clock (a
+hand-written name), the new file is stamped one second after it so
+lexicographic order — which is the apply order — is preserved. Never write
+migration file names by hand; always scaffold here. The file starts with a
+forward-only header comment; write your SQL below it.
 
 ## `migrate::codegen`
 

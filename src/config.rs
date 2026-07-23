@@ -70,6 +70,12 @@ pub struct WorkerConfig {
     /// SQL dialect override. Default: auto-detect via `database::listDatabases`.
     #[serde(default)]
     pub dialect: Option<Dialect>,
+
+    /// Run `migrate::codegen` automatically after a `migrate::up` that
+    /// applied at least one migration. Default: enabled when `types_out` is
+    /// set, disabled otherwise. Codegen failures never fail the up run.
+    #[serde(default)]
+    pub codegen_on_up: Option<bool>,
 }
 
 fn default_db() -> String {
@@ -88,11 +94,18 @@ impl Default for WorkerConfig {
             auto: false,
             types_out: None,
             dialect: None,
+            codegen_on_up: None,
         }
     }
 }
 
 impl WorkerConfig {
+    /// Effective `codegen_on_up`: explicit value wins, otherwise types are
+    /// regenerated whenever a `types_out` destination is configured.
+    pub fn codegen_on_up_enabled(&self) -> bool {
+        self.codegen_on_up.unwrap_or(self.types_out.is_some())
+    }
+
     pub fn from_yaml(yaml: &str) -> Result<Self, String> {
         serde_yml::from_str(yaml).map_err(|e| format!("yaml parse: {e}"))
     }
@@ -147,6 +160,23 @@ mod tests {
         assert!(!cfg.auto);
         assert!(cfg.types_out.is_none());
         assert!(cfg.dialect.is_none());
+        assert!(cfg.codegen_on_up.is_none());
+    }
+
+    #[test]
+    fn codegen_on_up_defaults_follow_types_out() {
+        let mut cfg = WorkerConfig::default();
+        assert!(!cfg.codegen_on_up_enabled()); // no types_out, no codegen
+
+        cfg.types_out = Some("./db.types.ts".into());
+        assert!(cfg.codegen_on_up_enabled()); // types_out set: on by default
+
+        cfg.codegen_on_up = Some(false); // explicit opt-out wins
+        assert!(!cfg.codegen_on_up_enabled());
+
+        cfg.types_out = None;
+        cfg.codegen_on_up = Some(true); // explicit opt-in without types_out:
+        assert!(cfg.codegen_on_up_enabled()); // codegen will fail loudly (no out)
     }
 
     #[test]

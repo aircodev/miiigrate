@@ -95,7 +95,9 @@ workers:
       db: primary                # database name in the database worker
       dir: ./migrations          # folder of YYYYMMDDHHMMSS_slug.sql files
       auto: false                # true = run migrate::up at startup
-      types_out: ./db.types.ts   # codegen output (optional)
+      types_out: ./db.types.ts   # codegen output (optional); when set,
+                                 # types regenerate after each migrate::up
+                                 # (opt out with codegen_on_up: false)
 ```
 
 The `config:` block is a first-boot seed; afterwards settings live in the

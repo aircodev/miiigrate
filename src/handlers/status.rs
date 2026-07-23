@@ -46,6 +46,11 @@ pub struct StatusResp {
     pub mismatched: Vec<MismatchedEntry>,
     /// Recorded as applied but the file no longer exists on disk.
     pub missing: Vec<AppliedRow>,
+    /// Files on disk whose timestamp prefix is ahead of the wall clock
+    /// (beyond skew tolerance) — almost certainly hand-written names.
+    /// Harmless once applied (`migrate::create` stays monotonic), but a
+    /// pending one should be renamed before apply.
+    pub future_dated: Vec<String>,
 }
 
 pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, MigrateError> {
@@ -61,6 +66,19 @@ pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, Mig
     let mut applied = Vec::new();
     let mut pending = Vec::new();
     let mut mismatched = Vec::new();
+
+    let now = chrono::Utc::now();
+    let future_dated: Vec<String> = files
+        .iter()
+        .filter(|f| migrations::is_future_dated(&f.name, now))
+        .map(|f| f.name.clone())
+        .collect();
+    if !future_dated.is_empty() {
+        tracing::warn!(
+            count = future_dated.len(),
+            "migration files are dated in the future (hand-written names?)"
+        );
+    }
 
     for file in files {
         match applied_by_name.remove(&file.name) {
@@ -95,5 +113,6 @@ pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, Mig
         pending,
         mismatched,
         missing,
+        future_dated,
     })
 }
