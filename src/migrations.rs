@@ -10,6 +10,7 @@
 //! rewritten with CRLF endings (Windows editors, `core.autocrlf`) keeps its
 //! identity; any other edit to an applied migration is a mismatch, by design.
 
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -48,6 +49,28 @@ pub fn validate_name(file_name: &str) -> Result<(), String> {
         return Err("slug may only contain [A-Za-z0-9_-]".into());
     }
     Ok(())
+}
+
+/// Parse the 14-digit timestamp prefix of a migration name as a UTC instant.
+/// `None` when the digits do not form a real calendar date/time —
+/// `validate_name` only checks that they are digits.
+pub fn timestamp_of(name: &str) -> Option<DateTime<Utc>> {
+    let ts = name.get(..14)?;
+    NaiveDateTime::parse_from_str(ts, "%Y%m%d%H%M%S")
+        .ok()
+        .map(|naive| naive.and_utc())
+}
+
+/// Grace period before a migration timestamp counts as future-dated, so
+/// ordinary clock skew between machines never trips the warning.
+const FUTURE_SKEW_TOLERANCE_MINUTES: i64 = 5;
+
+/// True when the migration's timestamp prefix is ahead of `now` beyond clock
+/// skew. Such a name was almost certainly written by hand instead of
+/// `migrate::create`: files created later would sort before it until the
+/// wall clock catches up.
+pub fn is_future_dated(name: &str, now: DateTime<Utc>) -> bool {
+    timestamp_of(name).is_some_and(|ts| ts > now + Duration::minutes(FUTURE_SKEW_TOLERANCE_MINUTES))
 }
 
 /// SHA-256 lowercase hex of `bytes`, as-is.
@@ -155,6 +178,27 @@ mod tests {
         ] {
             assert!(validate_name(name).is_err(), "{name} should be invalid");
         }
+    }
+
+    #[test]
+    fn timestamp_of_parses_valid_prefixes() {
+        let ts = timestamp_of("20260719143000_add_users.sql").unwrap();
+        assert_eq!(ts.to_rfc3339(), "2026-07-19T14:30:00+00:00");
+        // Digits that are not a real date: validate_name accepts, we don't.
+        assert!(timestamp_of("20261319143000_bad_month.sql").is_none());
+        assert!(timestamp_of("short.sql").is_none());
+    }
+
+    #[test]
+    fn future_dating_respects_skew_tolerance() {
+        let now = timestamp_of("20260723080000_now.sql").unwrap();
+        // 4 minutes ahead: within tolerance, not flagged.
+        assert!(!is_future_dated("20260723080400_soon.sql", now));
+        // 6 minutes ahead: flagged.
+        assert!(is_future_dated("20260723080600_later.sql", now));
+        // Past and unparseable names are never flagged.
+        assert!(!is_future_dated("20260101000000_old.sql", now));
+        assert!(!is_future_dated("nonsense.sql", now));
     }
 
     #[test]

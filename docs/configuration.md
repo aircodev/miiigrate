@@ -27,6 +27,7 @@ config change, restart the worker (or the engine).
 | `dir` | `./migrations` | Migration folder, resolved against the worker's working directory. Only `migrate::create` creates it. |
 | `auto` | `false` | Run `migrate::up` once at startup. If the `database` worker is not registered yet (no ordering guarantee under docker compose or engine-managed boots), the run is retried with capped backoff for up to 2 minutes. Best-effort: any other failure is logged and the worker stays up, so `migrate::status` remains available for diagnosis. |
 | `types_out` | — | Output path for `migrate::codegen`. Optional; without it, codegen requires `out` in the payload. |
+| `codegen_on_up` | follows `types_out` | Run `migrate::codegen` after a `migrate::up` that applied at least one migration. Defaults to `true` when `types_out` is set, `false` otherwise; set explicitly to override. Codegen failures are logged and never fail the up run. |
 | `dialect` | auto | `postgres` or `sqlite`. By default the dialect is detected from the `database` worker's `database::listDatabases` driver field. |
 
 ## Example
