@@ -1,6 +1,12 @@
 # Release binaries for the four supported targets, modeled on the workers
-# monorepo's _rust-binary.yml: tag `vX.Y.Z` -> GitHub release with one
+# monorepo's _rust-binary.yml: tag `vX.Y.Z` -> DRAFT GitHub release with one
 # artifact per target (miiigrate-<target>.tar.gz + sha256).
+#
+# The release is created as a draft, titled `miiigrate X.Y.Z`, with the
+# matching `## X.Y.Z` section of docs/changelog.md as its body — so watchers
+# are only notified once the draft is published, description included:
+#
+#   gh release edit vX.Y.Z --draft=false
 name: Release
 
 on:
@@ -15,8 +21,34 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: create draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create draft release with changelog notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Body = the `## <version> — <date>` section of the changelog.
+          awk -v ver="$VERSION" '
+            /^## /{ if (on) exit; if ($2 == ver) { on = 1; next } }
+            on
+          ' docs/changelog.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::docs/changelog.md has no section for $VERSION — add it before tagging"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "miiigrate $VERSION" \
+            --notes-file notes.md
+
   build:
     name: build ${{ matrix.target }}
+    needs: create-release
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -56,8 +88,10 @@ jobs:
           shasum -a 256 miiigrate-${{ matrix.target }}.tar.gz > miiigrate-${{ matrix.target }}.tar.gz.sha256
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            target/${{ matrix.target }}/release/miiigrate-${{ matrix.target }}.tar.gz
-            target/${{ matrix.target }}/release/miiigrate-${{ matrix.target }}.tar.gz.sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            target/${{ matrix.target }}/release/miiigrate-${{ matrix.target }}.tar.gz \
+            target/${{ matrix.target }}/release/miiigrate-${{ matrix.target }}.tar.gz.sha256 \
+            --clobber
