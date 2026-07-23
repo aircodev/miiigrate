@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking (0.x): `migrate::status`'s `future_dated` entries are now objects
+  `{ name, applied, hint }` instead of bare names — the hint states the
+  remediation explicitly (applied: harmless; pending: re-scaffold via
+  `migrate::create`, whose timestamps are monotonic).
 - Database errors now name the driver-native code in their message —
   `… (SQLSTATE 42703)` on Postgres, `… (sqlite error code 1555)` on SQLite —
   instead of burying it inside `database_error`. The full structured body is

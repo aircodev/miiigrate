@@ -7,10 +7,12 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use std::collections::BTreeSet;
+
 use super::tracking::{self, AppliedRow};
 use super::AppState;
 use crate::error::MigrateError;
-use crate::migrations;
+use crate::migrations::{self, MigrationFile};
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 pub struct StatusReq {}
@@ -32,6 +34,47 @@ pub struct MismatchedEntry {
     pub applied_at: Value,
 }
 
+/// A migration file whose timestamp prefix is ahead of the wall clock —
+/// almost certainly a hand-written name instead of `migrate::create`.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct FutureDatedEntry {
+    pub name: String,
+    /// Recorded in the tracking table (a drifted file counts as applied).
+    pub applied: bool,
+    /// What to do about it, spelled out.
+    pub hint: String,
+}
+
+/// Remediation hints, keyed on whether the file was already applied.
+const FUTURE_APPLIED_HINT: &str =
+    "applied and unchanged: harmless, expires once the clock catches up";
+const FUTURE_PENDING_HINT: &str = "pending: recreate it via migrate::create — its timestamps \
+     are monotonic with existing files — or rename it by hand before apply";
+
+/// Which of `files` are future-dated at `now`, and were they applied?
+fn future_dated_entries(
+    files: &[MigrationFile],
+    applied_names: &BTreeSet<String>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Vec<FutureDatedEntry> {
+    files
+        .iter()
+        .filter(|f| migrations::is_future_dated(&f.name, now))
+        .map(|f| {
+            let applied = applied_names.contains(&f.name);
+            FutureDatedEntry {
+                name: f.name.clone(),
+                applied,
+                hint: if applied {
+                    FUTURE_APPLIED_HINT.to_string()
+                } else {
+                    FUTURE_PENDING_HINT.to_string()
+                },
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StatusResp {
     pub db: String,
@@ -47,10 +90,10 @@ pub struct StatusResp {
     /// Recorded as applied but the file no longer exists on disk.
     pub missing: Vec<AppliedRow>,
     /// Files on disk whose timestamp prefix is ahead of the wall clock
-    /// (beyond skew tolerance) — almost certainly hand-written names.
-    /// Harmless once applied (`migrate::create` stays monotonic), but a
-    /// pending one should be renamed before apply.
-    pub future_dated: Vec<String>,
+    /// (beyond skew tolerance), with an explicit remediation hint each:
+    /// applied ones are harmless, pending ones should be re-scaffolded via
+    /// `migrate::create` before apply.
+    pub future_dated: Vec<FutureDatedEntry>,
 }
 
 pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, MigrateError> {
@@ -58,6 +101,9 @@ pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, Mig
     let files = migrations::list_migrations(Path::new(&state.config.dir))?;
     let applied_rows = tracking::fetch_applied(state).await?;
 
+    // The applied-name set survives the by-name map below, which the
+    // classification loop consumes entry by entry.
+    let applied_names: BTreeSet<String> = applied_rows.iter().map(|r| r.name.clone()).collect();
     let mut applied_by_name: BTreeMap<String, AppliedRow> = applied_rows
         .into_iter()
         .map(|r| (r.name.clone(), r))
@@ -67,12 +113,7 @@ pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, Mig
     let mut pending = Vec::new();
     let mut mismatched = Vec::new();
 
-    let now = chrono::Utc::now();
-    let future_dated: Vec<String> = files
-        .iter()
-        .filter(|f| migrations::is_future_dated(&f.name, now))
-        .map(|f| f.name.clone())
-        .collect();
+    let future_dated = future_dated_entries(&files, &applied_names, chrono::Utc::now());
     if !future_dated.is_empty() {
         tracing::warn!(
             count = future_dated.len(),
@@ -115,4 +156,46 @@ pub async fn handle(state: &AppState, _req: StatusReq) -> Result<StatusResp, Mig
         missing,
         future_dated,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::migrations::timestamp_of;
+
+    fn file(name: &str) -> MigrationFile {
+        MigrationFile {
+            name: name.into(),
+            path: name.into(),
+            checksum: "abc".into(),
+        }
+    }
+
+    #[test]
+    fn future_entries_carry_state_specific_hints() {
+        let now = timestamp_of("20260723080000_now.sql").unwrap();
+        let files = [
+            file("20260101000000_past.sql"),
+            file("20260723080400_within_skew.sql"),
+            file("20260723120000_applied_future.sql"),
+            file("20260723120001_pending_future.sql"),
+        ];
+        let applied: BTreeSet<String> = [
+            "20260101000000_past.sql",
+            "20260723120000_applied_future.sql",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        let entries = future_dated_entries(&files, &applied, now);
+        // Past and within-tolerance files are not flagged.
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "20260723120000_applied_future.sql");
+        assert!(entries[0].applied);
+        assert!(entries[0].hint.contains("harmless"));
+        assert_eq!(entries[1].name, "20260723120001_pending_future.sql");
+        assert!(!entries[1].applied);
+        assert!(entries[1].hint.contains("migrate::create"));
+    }
 }

@@ -59,7 +59,7 @@ time, including while `migrate::up` is failing.
   "pending":    [{ "name": "…", "checksum": "…" }],
   "mismatched": [{ "name": "…", "applied_checksum": "…", "file_checksum": "…", "applied_at": "…" }],
   "missing":    [{ "name": "…", "checksum": "…", "applied_at": "…" }],
-  "future_dated": ["…"]
+  "future_dated": [{ "name": "…", "applied": false, "hint": "pending: recreate it via migrate::create …" }]
 }
 ```
 
@@ -69,9 +69,10 @@ time, including while `migrate::up` is failing.
   `migrate::up` refuses to run while this list is non-empty.
 - `missing` — recorded as applied but the file no longer exists on disk.
 - `future_dated` — files on disk whose timestamp prefix is ahead of the wall
-  clock beyond a 5-minute skew tolerance: hand-written names. Harmless once
-  applied (`migrate::create` keeps new timestamps monotonic with them), but a
-  pending one should be renamed before apply.
+  clock beyond a 5-minute skew tolerance: hand-written names. Each entry says
+  whether the file is `applied` and carries an explicit `hint`: applied ones
+  are harmless (`migrate::create` keeps new timestamps monotonic with them),
+  pending ones should be re-scaffolded via `migrate::create` before apply.
 
 ## `migrate::create`
 
