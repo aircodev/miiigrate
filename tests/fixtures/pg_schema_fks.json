@@ -1,0 +1,4 @@
+[
+  { "table_name": "reservations", "constraint_name": "reservations_event_user_fkey", "column_name": "event_id", "references_table": "events", "references_column": "id", "position": "1", "on_delete": "CASCADE", "on_update": "NO ACTION" },
+  { "table_name": "reservations", "constraint_name": "reservations_event_user_fkey", "column_name": "user_id", "references_table": "events", "references_column": "owner_id", "position": "2", "on_delete": "CASCADE", "on_update": "NO ACTION" }
+]

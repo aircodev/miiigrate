@@ -136,6 +136,42 @@ the tracking-table read, and it degrades gracefully.
 - Works while the database worker is down: `db_checked: false`, drift lists
   are then unknown (empty).
 
+## `migrate::schema`
+
+Read-only structured report of the live schema — the verification companion
+of `migrate::up`. Everything an agent or human needs to confirm what a
+migration actually did, without hand-writing `information_schema` queries.
+
+- **Payload**: `{}` or `{ "table": "users" }` (exact name; an unknown table
+  yields an empty `tables` list, not an error)
+- **Returns**:
+
+```json
+{
+  "db": "primary",
+  "dialect": "postgres",
+  "tables": [{
+    "name": "reservations",
+    "columns": [{ "name": "id", "data_type": "bigint", "nullable": false,
+                  "default": "nextval('…')", "position": 1 }],
+    "primary_key": ["id"],
+    "foreign_keys": [{ "name": "…_fkey", "columns": ["event_id"],
+                       "references_table": "events", "references_columns": ["id"],
+                       "on_delete": "CASCADE", "on_update": "NO ACTION" }],
+    "indexes":  [{ "name": "…", "unique": true, "columns": ["…"], "definition": "CREATE …" }],
+    "triggers": [{ "name": "…", "timing": "AFTER", "events": ["INSERT", "UPDATE"] }]
+  }],
+  "enums": [{ "name": "mood", "labels": ["happy", "sad", "curious"] }]
+}
+```
+
+- Columns come in ordinal (DDL) order with defaults; multi-column foreign
+  keys are paired column-by-column; `enums` is Postgres-only.
+- `indexes[].columns` is best-effort: empty for expression indexes — read
+  `definition` there. SQLite auto-indexes backing PRIMARY KEY / UNIQUE have
+  no `definition`.
+- The `_iii_migrations` tracking table is excluded.
+
 ## Checksums
 
 Checksums are SHA-256 over the file content with line endings normalized

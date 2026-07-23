@@ -3,6 +3,7 @@
 pub mod check;
 pub mod codegen;
 pub mod create;
+pub mod schema;
 pub mod status;
 pub mod tracking;
 pub mod up;

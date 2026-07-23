@@ -7,7 +7,7 @@ use iii_sdk::{register_worker, InitOptions, RegisterFunction};
 use miiigrate::config::WorkerConfig;
 use miiigrate::configuration;
 use miiigrate::error::MigrateError;
-use miiigrate::handlers::{check, codegen, create, status, up, AppState};
+use miiigrate::handlers::{check, codegen, create, schema, status, up, AppState};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -181,11 +181,32 @@ async fn main() -> Result<()> {
         );
     }
 
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::schema",
+            RegisterFunction::new_async(move |req: schema::SchemaReq| {
+                let st = st.clone();
+                async move {
+                    schema::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Read-only structured report of the live schema through \
+                 database::query: ordered columns with defaults, primary keys, \
+                 foreign keys, indexes, triggers, and Postgres enums. For \
+                 verifying what a migration actually did.",
+            ),
+        );
+    }
+
     if auto {
         run_auto_migration(&state).await;
     }
 
-    tracing::info!("miiigrate worker registered 5 functions, waiting for invocations");
+    tracing::info!("miiigrate worker registered 6 functions, waiting for invocations");
     wait_for_shutdown_signal().await?;
     tracing::info!("miiigrate worker shutting down");
     iii.shutdown_async().await;

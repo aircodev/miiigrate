@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- New function `migrate::schema`: read-only structured report of the live
+  schema — ordered columns with defaults, primary keys, foreign keys
+  (multi-column pairs included), indexes, triggers, and Postgres enums —
+  for verifying what a migration actually did without hand-writing
+  `information_schema` queries. Optional `table` payload filter.
 - New function `migrate::check`: static validation of the migrations
   directory — statement splitting, empty files, naming scheme, checksum
   drift — without executing any SQL. Reports every problem at once instead

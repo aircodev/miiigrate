@@ -1,0 +1,8 @@
+[
+  { "table_name": "_iii_migrations", "column_name": "name", "data_type": "text", "is_nullable": "NO", "column_default": null, "ordinal_position": 1 },
+  { "table_name": "events", "column_name": "id", "data_type": "bigint", "is_nullable": "NO", "column_default": "nextval('events_id_seq'::regclass)", "ordinal_position": 1 },
+  { "table_name": "events", "column_name": "title", "data_type": "text", "is_nullable": "NO", "column_default": null, "ordinal_position": 2 },
+  { "table_name": "events", "column_name": "created_at", "data_type": "timestamp with time zone", "is_nullable": "NO", "column_default": "now()", "ordinal_position": 3 },
+  { "table_name": "reservations", "column_name": "event_id", "data_type": "bigint", "is_nullable": "NO", "column_default": null, "ordinal_position": "1" },
+  { "table_name": "reservations", "column_name": "user_id", "data_type": "bigint", "is_nullable": "YES", "column_default": null, "ordinal_position": "2" }
+]

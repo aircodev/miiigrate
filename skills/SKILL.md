@@ -53,6 +53,9 @@ migration as skipped, not failed.
 - You wrote migration SQL and want it validated before applying —
   `migrate::check` runs the exact `migrate::up` parsing without executing
   anything, and lists every problem at once.
+- You need to verify what a migration actually did — `migrate::schema`
+  reports ordered columns, primary keys, foreign keys, indexes, and
+  triggers; never hand-write `information_schema` queries for that.
 - TypeScript code reads rows from `database::query` and needs types that
   match the JSON wire format (`migrate::codegen`).
 - A `migrate::up` run failed and you need the failing file and statement
@@ -88,6 +91,10 @@ migration as skipped, not failed.
 - `migrate::codegen` — introspect the live schema through `database::query`
   and write TypeScript types to the configured `types_out` (or payload
   `out`); returns `{ path, tables, enums }`.
+- `migrate::schema` — read-only structured report of the live schema
+  (ordered columns with defaults, primary keys, foreign keys, indexes,
+  triggers, Postgres enums); payload `{}` or `{ table: "users" }`. Use it
+  to verify a migration's effect instead of raw `information_schema` SQL.
 
 Configuration (`db`, `dir`, `auto`, `types_out`, `codegen_on_up`, `dialect`)
 lives in the `configuration` worker under id `miiigrate` and is read once at

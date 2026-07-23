@@ -1,0 +1,6 @@
+[
+  { "table_name": "_iii_migrations", "column_name": "name", "ordinal_position": 1 },
+  { "table_name": "events", "column_name": "id", "ordinal_position": 1 },
+  { "table_name": "reservations", "column_name": "user_id", "ordinal_position": 1 },
+  { "table_name": "reservations", "column_name": "event_id", "ordinal_position": 2 }
+]
