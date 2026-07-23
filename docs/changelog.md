@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Docs: canonical Postgres recreate-pattern recipe (column reorder,
+  incompatible type change) in the workflows, with the checklist of classic
+  omissions — incoming foreign keys, the serial sequence's `OWNED BY`,
+  indexes, triggers, defaults.
 - New function `migrate::schema`: read-only structured report of the live
   schema — ordered columns with defaults, primary keys, foreign keys
   (multi-column pairs included), indexes, triggers, and Postgres enums —
