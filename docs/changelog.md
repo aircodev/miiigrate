@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- New function `migrate::check`: static validation of the migrations
+  directory — statement splitting, empty files, naming scheme, checksum
+  drift — without executing any SQL. Reports every problem at once instead
+  of failing on the first, and keeps working while the database worker is
+  down (`db_checked: false`). Forward-only migrations cannot be rolled
+  back, so validate before you apply.
 - Breaking (0.x): `migrate::status`'s `future_dated` entries are now objects
   `{ name, applied, hint }` instead of bare names — the hint states the
   remediation explicitly (applied: harmless; pending: re-scaffold via

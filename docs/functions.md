@@ -103,6 +103,39 @@ One `export interface` per table, plus an aggregate `Database` type. The
 `_iii_migrations` tracking table is excluded. See [codegen.md](codegen.md)
 for the exact type mapping.
 
+## `migrate::check`
+
+Statically validate the migrations directory — "would `migrate::up`
+succeed?" — without executing any SQL. Read-only; the only network call is
+the tracking-table read, and it degrades gracefully.
+
+- **Payload**: `{}`
+- **Returns**:
+
+```json
+{
+  "ok": true,
+  "dir": "./migrations",
+  "pending_checked": [{ "name": "…", "ok": true, "statements": 3 }],
+  "invalid_names":   [{ "file": "notes.sql", "reason": "…" }],
+  "future_dated":    [{ "name": "…", "applied": false, "hint": "…" }],
+  "mismatched":      [],
+  "missing":         [],
+  "db_checked": true
+}
+```
+
+- Every pending file is parsed with the same splitter as `migrate::up`;
+  `pending_checked[].error` carries the exact message `up` would fail with
+  (unsplittable SQL, empty file).
+- Unlike `migrate::up`/`status`, an ill-named `.sql` file does not abort the
+  report — all problems are listed at once under `invalid_names`.
+- `ok` is false when anything would block or break `migrate::up`: an invalid
+  name, a broken pending file, or checksum drift. `future_dated` and
+  `missing` are warnings and do not flip it.
+- Works while the database worker is down: `db_checked: false`, drift lists
+  are then unknown (empty).
+
 ## Checksums
 
 Checksums are SHA-256 over the file content with line endings normalized

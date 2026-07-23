@@ -103,19 +103,34 @@ pub fn checksum_migration(bytes: &[u8]) -> String {
     checksum_bytes(&normalized)
 }
 
-/// List and checksum all `*.sql` files in `dir`, sorted by name.
-///
-/// Errors: `DIR_NOT_FOUND` when the directory is missing,
-/// `INVALID_MIGRATION_NAME` when a `.sql` file does not follow the naming
-/// scheme (a stray file must fail loudly, not be silently skipped — its
-/// ordering relative to the valid files would be undefined). Non-`.sql`
-/// entries and subdirectories are ignored.
-pub fn list_migrations(dir: &Path) -> Result<Vec<MigrationFile>, MigrateError> {
+/// A `.sql` file in the migrations directory whose name does not follow the
+/// naming scheme.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+pub struct InvalidFile {
+    pub file: String,
+    pub reason: String,
+}
+
+/// Result of scanning the migrations directory without failing on the first
+/// invalid name. Only I/O problems (missing dir, unreadable file) error out.
+#[derive(Debug, Default)]
+pub struct MigrationScan {
+    /// Well-formed migration files, sorted by name (apply order).
+    pub valid: Vec<MigrationFile>,
+    /// `.sql` files that do not follow the naming scheme, sorted by file.
+    pub invalid: Vec<InvalidFile>,
+}
+
+/// Scan and checksum all `*.sql` files in `dir`. Non-`.sql` entries and
+/// subdirectories are ignored; ill-named `.sql` files are reported in
+/// `invalid` rather than aborting the scan, so callers like `migrate::check`
+/// can list every problem at once.
+pub fn scan_migrations(dir: &Path) -> Result<MigrationScan, MigrateError> {
     let entries = std::fs::read_dir(dir).map_err(|_| MigrateError::DirNotFound {
         dir: dir.display().to_string(),
     })?;
 
-    let mut files = Vec::new();
+    let mut scan = MigrationScan::default();
     for entry in entries {
         let entry = entry.map_err(|e| MigrateError::ConfigError {
             message: format!("reading {}: {e}", dir.display()),
@@ -124,29 +139,46 @@ pub fn list_migrations(dir: &Path) -> Result<Vec<MigrationFile>, MigrateError> {
         if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("sql") {
             continue;
         }
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| MigrateError::InvalidMigrationName {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()).map(String::from) else {
+            scan.invalid.push(InvalidFile {
                 file: path.display().to_string(),
                 reason: "non-UTF-8 file name".into(),
-            })?
-            .to_string();
-        validate_name(&name).map_err(|reason| MigrateError::InvalidMigrationName {
-            file: name.clone(),
-            reason,
-        })?;
+            });
+            continue;
+        };
+        if let Err(reason) = validate_name(&name) {
+            scan.invalid.push(InvalidFile { file: name, reason });
+            continue;
+        }
         let bytes = std::fs::read(&path).map_err(|e| MigrateError::ConfigError {
             message: format!("reading {}: {e}", path.display()),
         })?;
-        files.push(MigrationFile {
+        scan.valid.push(MigrationFile {
             name,
             checksum: checksum_migration(&bytes),
             path,
         });
     }
-    files.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(files)
+    scan.valid.sort_by(|a, b| a.name.cmp(&b.name));
+    scan.invalid.sort_by(|a, b| a.file.cmp(&b.file));
+    Ok(scan)
+}
+
+/// List and checksum all `*.sql` files in `dir`, sorted by name.
+///
+/// Errors: `DIR_NOT_FOUND` when the directory is missing,
+/// `INVALID_MIGRATION_NAME` when a `.sql` file does not follow the naming
+/// scheme (a stray file must fail loudly, not be silently skipped — its
+/// ordering relative to the valid files would be undefined).
+pub fn list_migrations(dir: &Path) -> Result<Vec<MigrationFile>, MigrateError> {
+    let scan = scan_migrations(dir)?;
+    if let Some(bad) = scan.invalid.into_iter().next() {
+        return Err(MigrateError::InvalidMigrationName {
+            file: bad.file,
+            reason: bad.reason,
+        });
+    }
+    Ok(scan.valid)
 }
 
 #[cfg(test)]
@@ -245,6 +277,19 @@ mod tests {
         let files = list_migrations(tmp.path()).unwrap();
         let names: Vec<_> = files.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["20260101000000_a.sql", "20260202000000_b.sql"]);
+    }
+
+    #[test]
+    fn scan_reports_invalid_names_without_failing() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("20260101000000_a.sql"), "a").unwrap();
+        std::fs::write(tmp.path().join("notes.sql"), "x").unwrap();
+
+        let scan = scan_migrations(tmp.path()).unwrap();
+        assert_eq!(scan.valid.len(), 1);
+        assert_eq!(scan.invalid.len(), 1);
+        assert_eq!(scan.invalid[0].file, "notes.sql");
+        assert_eq!(scan.invalid[0].reason, "name too short");
     }
 
     #[test]

@@ -52,7 +52,8 @@ const FUTURE_PENDING_HINT: &str = "pending: recreate it via migrate::create — 
      are monotonic with existing files — or rename it by hand before apply";
 
 /// Which of `files` are future-dated at `now`, and were they applied?
-fn future_dated_entries(
+/// Shared with `migrate::check`, which reports the same entries.
+pub(crate) fn future_dated_entries(
     files: &[MigrationFile],
     applied_names: &BTreeSet<String>,
     now: chrono::DateTime<chrono::Utc>,

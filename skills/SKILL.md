@@ -50,6 +50,9 @@ migration as skipped, not failed.
   `migrate::up`.
 - You need the current schema state: applied, pending, drifted, or
   future-dated files (`migrate::status`, read-only, safe anytime).
+- You wrote migration SQL and want it validated before applying —
+  `migrate::check` runs the exact `migrate::up` parsing without executing
+  anything, and lists every problem at once.
 - TypeScript code reads rows from `database::query` and needs types that
   match the JSON wire format (`migrate::codegen`).
 - A `migrate::up` run failed and you need the failing file and statement
@@ -74,6 +77,10 @@ migration as skipped, not failed.
   `types_out` is set), regenerates types after a run that applied anything.
 - `migrate::status` — read-only report `{ applied, pending, mismatched,
   missing, future_dated }` with names, checksums, and apply dates.
+- `migrate::check` — static validation of pending migrations (splitting,
+  empty files, naming, checksum drift) without executing any SQL; returns
+  `{ ok, pending_checked, invalid_names, mismatched, … }`. Run it after
+  writing SQL, before `migrate::up`.
 - `migrate::create` — payload `{ name: "add_users" }`; creates
   `<dir>/<UTC timestamp>_add_users.sql` with a unique, monotonic timestamp
   and returns `{ name, path }`. Write the SQL into that file before calling
