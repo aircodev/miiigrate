@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- README: how to pass payloads containing quotes to the iii CLI (read the
+  JSON from a file with `--json "$(cat …)"`; key=value pairs for scalars) —
+  the CLI has no native `@file`/stdin form.
 - Skill: states that `future_dated` entries never block schema work — the
   resolution is automatic (`migrate::create` timestamps are monotonic), so
   an agent must not stall on an anomaly that is already handled.
