@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — 2026-07-23
 
 - `migrate::create` keeps timestamps monotonic with the files already on
   disk: when the latest existing migration is dated ahead of the clock (a
