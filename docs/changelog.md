@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Database errors now name the driver-native code in their message —
+  `… (SQLSTATE 42703)` on Postgres, `… (sqlite error code 1555)` on SQLite —
+  instead of burying it inside `database_error`. The full structured body is
+  still attached unchanged.
+
 ## 0.1.3 — 2026-07-23
 
 - `migrate::create` keeps timestamps monotonic with the files already on
