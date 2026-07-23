@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Skill: documents that `database::query` is read-only (writes fail with
+  SQLSTATE 25006) — ad-hoc writes go through `database::execute` or
+  `database::transaction`.
 - Docs: canonical Postgres recreate-pattern recipe (column reorder,
   incompatible type change) in the workflows, with the checklist of classic
   omissions — incoming foreign keys, the serial sequence's `OWNED BY`,

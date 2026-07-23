@@ -69,6 +69,9 @@ migration as skipped, not failed.
 - Dialect-specific SQL is your responsibility (e.g. SQLite cannot
   `ALTER COLUMN TYPE`; use the table-recreate pattern inside one migration —
   the file runs as a single atomic batch).
+- `database::query` is read-only — a write through it fails with SQLSTATE
+  25006. Route any ad-hoc write through `database::execute` or
+  `database::transaction`; schema changes always go through migrations.
 - For ad-hoc queries or data edits, call the `database` worker directly; for
   file or shell operations, use the `shell` worker.
 
