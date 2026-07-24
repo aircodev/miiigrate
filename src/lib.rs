@@ -6,7 +6,8 @@
 //!
 //! The worker registers under the name `miiigrate`; the functions it exposes
 //! live under the `migrate::` namespace (`migrate::up`, `migrate::status`,
-//! `migrate::create`, `migrate::codegen`).
+//! `migrate::check`, `migrate::create`, `migrate::codegen`,
+//! `migrate::schema`).
 
 pub mod codegen;
 pub mod config;
@@ -15,6 +16,7 @@ pub mod db;
 pub mod error;
 pub mod handlers;
 pub mod migrations;
+pub mod schema;
 pub mod splitter;
 
 /// Worker name — also the registry package, binary, and configuration id.

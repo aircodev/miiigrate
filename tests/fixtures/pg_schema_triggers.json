@@ -1,0 +1,4 @@
+[
+  { "table_name": "events", "trigger_name": "events_audit", "timing": "AFTER", "event": "INSERT", "action_statement": "EXECUTE FUNCTION audit_events()" },
+  { "table_name": "events", "trigger_name": "events_audit", "timing": "AFTER", "event": "UPDATE", "action_statement": "EXECUTE FUNCTION audit_events()" }
+]

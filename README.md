@@ -71,6 +71,21 @@ iii trigger migrate::codegen --json '{}'
 #    -> ./db.types.ts — one interface per table
 ```
 
+**Payloads with quotes.** SQL regularly contains single quotes and `$$`
+blocks, which fight the shell when inlined into `--json '…'` (the iii CLI
+has no `@file`/stdin form). Put the payload in a file and let the shell do
+the reading — no escaping needed:
+
+```sh
+cat > /tmp/payload.json <<'EOF'
+{ "db": "primary", "sql": "UPDATE users SET motto = 'don''t panic' WHERE id = $1", "params": [1] }
+EOF
+iii trigger database::execute --json "$(cat /tmp/payload.json)"
+```
+
+Simple scalar fields can also skip JSON entirely: `iii trigger
+migrate::create name=add_users` (key=value pairs merge over `--json`).
+
 Three rules keep it simple and safe:
 
 - **Forward-only.** Never edit an applied file — write a new migration to

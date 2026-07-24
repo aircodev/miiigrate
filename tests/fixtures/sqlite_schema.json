@@ -1,0 +1,34 @@
+{
+  "_iii_migrations": {
+    "columns": [ { "cid": 0, "name": "name", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 1 } ],
+    "foreign_keys": [],
+    "indexes": [],
+    "triggers": []
+  },
+  "orders": {
+    "columns": [
+      { "cid": 0, "name": "tenant", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 2 },
+      { "cid": 1, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },
+      { "cid": 2, "name": "qty", "type": "INTEGER", "notnull": 1, "dflt_value": "1", "pk": 0 },
+      { "cid": 3, "name": "user_ref", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 }
+    ],
+    "foreign_keys": [
+      { "id": 0, "seq": 0, "table": "users", "from": "user_ref", "to": null, "on_update": "NO ACTION", "on_delete": "CASCADE" }
+    ],
+    "indexes": [
+      {
+        "list_row": { "name": "sqlite_autoindex_orders_1", "unique": 1, "origin": "pk" },
+        "columns": [ { "seqno": 0, "name": "id" }, { "seqno": 1, "name": "tenant" } ],
+        "sql": null
+      },
+      {
+        "list_row": { "name": "idx_orders_qty", "unique": 0, "origin": "c" },
+        "columns": [ { "seqno": 0, "name": "qty" } ],
+        "sql": "CREATE INDEX idx_orders_qty ON orders (qty)"
+      }
+    ],
+    "triggers": [
+      { "name": "orders_audit", "sql": "CREATE TRIGGER orders_audit AFTER INSERT ON orders BEGIN INSERT INTO log VALUES (1); END" }
+    ]
+  }
+}

@@ -111,3 +111,59 @@ INSERT INTO users_new (id, name, score) SELECT id, name, CAST(score AS REAL) FRO
 DROP TABLE users;
 ALTER TABLE users_new RENAME TO users;
 ```
+
+### Postgres recreate pattern (column reorder, incompatible type change)
+
+Postgres has no `ALTER TABLE … REORDER`; when the column order matters or a
+type change is beyond `ALTER COLUMN TYPE`, recreate the table **inside one
+migration** (single atomic batch — the swap is all-or-nothing). The DDL is
+straightforward; what bites are the objects attached to the *old* table
+that silently die with it. Canonical example, reordering `users`:
+
+```sql
+-- 1. New shape, everything declared up front (defaults, constraints).
+CREATE TABLE users_new (
+    id bigint PRIMARY KEY DEFAULT nextval('users_id_seq'),
+    first_name text,
+    last_name text,
+    email text UNIQUE,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- 2. Copy the data, naming columns explicitly on both sides.
+INSERT INTO users_new (id, first_name, last_name, email, created_at)
+SELECT id, first_name, last_name, email, created_at FROM users;
+
+-- 3. Re-point the sequence: it is OWNED BY the old table and would be
+--    dropped with it otherwise.
+ALTER SEQUENCE users_id_seq OWNED BY users_new.id;
+
+-- 4. Incoming foreign keys (other tables referencing users) must be
+--    dropped before the old table can go, and recreated against the new.
+ALTER TABLE reservations DROP CONSTRAINT reservations_user_id_fkey;
+
+-- 5. Swap.
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+
+-- 6. Recreate what lived on (or pointed at) the old table:
+ALTER TABLE reservations
+    ADD CONSTRAINT reservations_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE;
+CREATE INDEX idx_users_mood ON users (mood);
+CREATE TRIGGER users_audit AFTER INSERT OR UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION audit_users();
+```
+
+Checklist of the classic omissions — each dies silently with `DROP TABLE`:
+
+- **Incoming foreign keys** from other tables (step 4/6) — list them first:
+  they do not show up on the table you are recreating.
+- **The sequence** behind `bigserial`/`serial` (step 3) — without
+  `OWNED BY` it is dropped and inserts start failing.
+- **Indexes** beyond the primary key, **triggers**, and non-inline
+  **constraints** (step 6).
+- **Column defaults** — declare them in step 1, they are not copied.
+
+Verify the result with `migrate::schema` (columns in order, foreign keys,
+indexes, triggers) before writing the next migration.

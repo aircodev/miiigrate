@@ -7,7 +7,7 @@ use iii_sdk::{register_worker, InitOptions, RegisterFunction};
 use miiigrate::config::WorkerConfig;
 use miiigrate::configuration;
 use miiigrate::error::MigrateError;
-use miiigrate::handlers::{codegen, create, status, up, AppState};
+use miiigrate::handlers::{check, codegen, create, schema, status, up, AppState};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -126,6 +126,26 @@ async fn main() -> Result<()> {
     {
         let st = state.clone();
         iii.register_function(
+            "migrate::check",
+            RegisterFunction::new_async(move |req: check::CheckReq| {
+                let st = st.clone();
+                async move {
+                    check::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Statically validate migrations without executing any SQL: name \
+                 scheme, statement splitting, empty files, checksum drift. \
+                 Read-only; keeps working while the database worker is down \
+                 (db_checked: false).",
+            ),
+        );
+    }
+    {
+        let st = state.clone();
+        iii.register_function(
             "migrate::create",
             RegisterFunction::new_async(move |req: create::CreateReq| {
                 let st = st.clone();
@@ -161,11 +181,32 @@ async fn main() -> Result<()> {
         );
     }
 
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::schema",
+            RegisterFunction::new_async(move |req: schema::SchemaReq| {
+                let st = st.clone();
+                async move {
+                    schema::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Read-only structured report of the live schema through \
+                 database::query: ordered columns with defaults, primary keys, \
+                 foreign keys, indexes, triggers, and Postgres enums. For \
+                 verifying what a migration actually did.",
+            ),
+        );
+    }
+
     if auto {
         run_auto_migration(&state).await;
     }
 
-    tracing::info!("miiigrate worker registered 4 functions, waiting for invocations");
+    tracing::info!("miiigrate worker registered 6 functions, waiting for invocations");
     wait_for_shutdown_signal().await?;
     tracing::info!("miiigrate worker shutting down");
     iii.shutdown_async().await;

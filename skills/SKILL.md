@@ -40,8 +40,12 @@ migration as skipped, not failed.
 - Apply with `migrate::up`, then check the response: when `types_path` is
   present the TypeScript types were already regenerated; when it is absent
   and the project has a `types_out`, run `migrate::codegen` yourself.
-- Before any schema work, call `migrate::status` and resolve `mismatched`,
-  `missing`, or `future_dated` entries before adding new migrations.
+- Before any schema work, call `migrate::status`. `mismatched` and
+  `missing` entries must be resolved first. `future_dated` entries do NOT
+  block you: an applied one is harmless (it expires once the clock catches
+  up), and a pending one is fixed by scaffolding through `migrate::create`
+  as usual — its timestamps are monotonic with existing files, so the new
+  file lands after the future-dated one. Never stall on `future_dated`.
 
 ## When to Use
 
@@ -50,6 +54,12 @@ migration as skipped, not failed.
   `migrate::up`.
 - You need the current schema state: applied, pending, drifted, or
   future-dated files (`migrate::status`, read-only, safe anytime).
+- You wrote migration SQL and want it validated before applying —
+  `migrate::check` runs the exact `migrate::up` parsing without executing
+  anything, and lists every problem at once.
+- You need to verify what a migration actually did — `migrate::schema`
+  reports ordered columns, primary keys, foreign keys, indexes, and
+  triggers; never hand-write `information_schema` queries for that.
 - TypeScript code reads rows from `database::query` and needs types that
   match the JSON wire format (`migrate::codegen`).
 - A `migrate::up` run failed and you need the failing file and statement
@@ -63,6 +73,9 @@ migration as skipped, not failed.
 - Dialect-specific SQL is your responsibility (e.g. SQLite cannot
   `ALTER COLUMN TYPE`; use the table-recreate pattern inside one migration —
   the file runs as a single atomic batch).
+- `database::query` is read-only — a write through it fails with SQLSTATE
+  25006. Route any ad-hoc write through `database::execute` or
+  `database::transaction`; schema changes always go through migrations.
 - For ad-hoc queries or data edits, call the `database` worker directly; for
   file or shell operations, use the `shell` worker.
 
@@ -74,6 +87,10 @@ migration as skipped, not failed.
   `types_out` is set), regenerates types after a run that applied anything.
 - `migrate::status` — read-only report `{ applied, pending, mismatched,
   missing, future_dated }` with names, checksums, and apply dates.
+- `migrate::check` — static validation of pending migrations (splitting,
+  empty files, naming, checksum drift) without executing any SQL; returns
+  `{ ok, pending_checked, invalid_names, mismatched, … }`. Run it after
+  writing SQL, before `migrate::up`.
 - `migrate::create` — payload `{ name: "add_users" }`; creates
   `<dir>/<UTC timestamp>_add_users.sql` with a unique, monotonic timestamp
   and returns `{ name, path }`. Write the SQL into that file before calling
@@ -81,6 +98,10 @@ migration as skipped, not failed.
 - `migrate::codegen` — introspect the live schema through `database::query`
   and write TypeScript types to the configured `types_out` (or payload
   `out`); returns `{ path, tables, enums }`.
+- `migrate::schema` — read-only structured report of the live schema
+  (ordered columns with defaults, primary keys, foreign keys, indexes,
+  triggers, Postgres enums); payload `{}` or `{ table: "users" }`. Use it
+  to verify a migration's effect instead of raw `information_schema` SQL.
 
 Configuration (`db`, `dir`, `auto`, `types_out`, `codegen_on_up`, `dialect`)
 lives in the `configuration` worker under id `miiigrate` and is read once at

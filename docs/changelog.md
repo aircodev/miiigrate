@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+- README: how to pass payloads containing quotes to the iii CLI (read the
+  JSON from a file with `--json "$(cat …)"`; key=value pairs for scalars) —
+  the CLI has no native `@file`/stdin form.
+- Skill: states that `future_dated` entries never block schema work — the
+  resolution is automatic (`migrate::create` timestamps are monotonic), so
+  an agent must not stall on an anomaly that is already handled.
+- Skill: documents that `database::query` is read-only (writes fail with
+  SQLSTATE 25006) — ad-hoc writes go through `database::execute` or
+  `database::transaction`.
+- Docs: canonical Postgres recreate-pattern recipe (column reorder,
+  incompatible type change) in the workflows, with the checklist of classic
+  omissions — incoming foreign keys, the serial sequence's `OWNED BY`,
+  indexes, triggers, defaults.
+- New function `migrate::schema`: read-only structured report of the live
+  schema — ordered columns with defaults, primary keys, foreign keys
+  (multi-column pairs included), indexes, triggers, and Postgres enums —
+  for verifying what a migration actually did without hand-writing
+  `information_schema` queries. Optional `table` payload filter.
+- New function `migrate::check`: static validation of the migrations
+  directory — statement splitting, empty files, naming scheme, checksum
+  drift — without executing any SQL. Reports every problem at once instead
+  of failing on the first, and keeps working while the database worker is
+  down (`db_checked: false`). Forward-only migrations cannot be rolled
+  back, so validate before you apply.
+- Breaking (0.x): `migrate::status`'s `future_dated` entries are now objects
+  `{ name, applied, hint }` instead of bare names — the hint states the
+  remediation explicitly (applied: harmless; pending: re-scaffold via
+  `migrate::create`, whose timestamps are monotonic).
+- Database errors now name the driver-native code in their message —
+  `… (SQLSTATE 42703)` on Postgres, `… (sqlite error code 1555)` on SQLite —
+  instead of burying it inside `database_error`. The full structured body is
+  still attached unchanged.
+
 ## 0.1.3 — 2026-07-23
 
 - `migrate::create` keeps timestamps monotonic with the files already on

@@ -64,9 +64,49 @@ pub enum DbCallError {
         message: String,
         /// `failed_index` from `DRIVER_ERROR` during a transaction batch.
         failed_index: Option<usize>,
+        /// Driver-native error code from the body (`inner_code`): the
+        /// Postgres SQLSTATE, or the SQLite extended result code.
+        inner_code: Option<String>,
+        /// `driver` from the body (`postgres`, `sqlite`).
+        driver: Option<String>,
         /// Full parsed error body, for embedding in `MIGRATION_FAILED`.
         body: Option<Value>,
     },
+}
+
+/// Build a `Worker` error from a parsed database-worker body, surfacing the
+/// driver-native code (`inner_code`, e.g. a Postgres SQLSTATE) in the message
+/// so callers can diagnose without digging into `database_error`.
+fn worker_error_from_body(body: Value, fallback_message: &str) -> DbCallError {
+    let code = body.get("code").and_then(Value::as_str).map(String::from);
+    let driver = body.get("driver").and_then(Value::as_str).map(String::from);
+    let inner_code = body
+        .get("inner_code")
+        .and_then(Value::as_str)
+        .map(String::from);
+    let failed_index = body
+        .get("failed_index")
+        .and_then(Value::as_u64)
+        .map(|i| i as usize);
+    let base = body
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or(fallback_message);
+    let message = match (&inner_code, driver.as_deref()) {
+        // Postgres inner codes are SQLSTATEs; name them as such — the
+        // five-character code is what the docs and search engines index.
+        (Some(c), Some("postgres") | None) => format!("{base} (SQLSTATE {c})"),
+        (Some(c), Some(d)) => format!("{base} ({d} error code {c})"),
+        (None, _) => base.to_string(),
+    };
+    DbCallError::Worker {
+        code,
+        message,
+        failed_index,
+        inner_code,
+        driver,
+        body: Some(body),
+    }
 }
 
 impl DbCallError {
@@ -117,27 +157,13 @@ fn map_sdk_error(e: iii_sdk::errors::Error) -> DbCallError {
             // the first `{`.
             let json_part = message.find('{').map(|i| &message[i..]).unwrap_or("");
             match serde_json::from_str::<Value>(json_part) {
-                Ok(body) if body.get("code").is_some() => {
-                    let worker_code = body["code"].as_str().map(String::from);
-                    let failed_index = body
-                        .get("failed_index")
-                        .and_then(Value::as_u64)
-                        .map(|i| i as usize);
-                    DbCallError::Worker {
-                        code: worker_code,
-                        message: body
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or(&message)
-                            .to_string(),
-                        failed_index,
-                        body: Some(body),
-                    }
-                }
+                Ok(body) if body.get("code").is_some() => worker_error_from_body(body, &message),
                 _ => DbCallError::Worker {
                     code: Some(code),
                     message,
                     failed_index: None,
+                    inner_code: None,
+                    driver: None,
                     body: None,
                 },
             }
@@ -182,6 +208,8 @@ pub async fn query(
         code: None,
         message: format!("unexpected database::query response shape: {e}"),
         failed_index: None,
+        inner_code: None,
+        driver: None,
         body: None,
     })
 }
@@ -225,26 +253,41 @@ pub async fn transaction(
     // paths, as `{ committed: false, error, failed_index }` inside an Ok
     // response. Normalize the latter to DbCallError::Worker.
     if resp.get("committed").and_then(Value::as_bool) == Some(false) {
-        let body = resp.get("error").cloned();
-        let failed_index = resp
+        let outer_failed_index = resp
             .get("failed_index")
             .and_then(Value::as_u64)
             .map(|i| i as usize);
-        let (code, message) = match &body {
-            Some(b) => (
-                b.get("code").and_then(Value::as_str).map(String::from),
-                b.get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("transaction rolled back")
-                    .to_string(),
-            ),
-            None => (None, "transaction rolled back".to_string()),
-        };
-        return Err(DbCallError::Worker {
-            code,
-            message,
-            failed_index,
-            body,
+        return Err(match resp.get("error").cloned() {
+            Some(body) => {
+                // The batch index may live next to `error` rather than inside
+                // it — keep whichever the body itself did not provide.
+                match worker_error_from_body(body, "transaction rolled back") {
+                    DbCallError::Worker {
+                        code,
+                        message,
+                        failed_index,
+                        inner_code,
+                        driver,
+                        body,
+                    } => DbCallError::Worker {
+                        code,
+                        message,
+                        failed_index: failed_index.or(outer_failed_index),
+                        inner_code,
+                        driver,
+                        body,
+                    },
+                    other => other,
+                }
+            }
+            None => DbCallError::Worker {
+                code: None,
+                message: "transaction rolled back".to_string(),
+                failed_index: outer_failed_index,
+                inner_code: None,
+                driver: None,
+                body: None,
+            },
         });
     }
     Ok(resp)
@@ -295,6 +338,66 @@ mod tests {
                 assert_eq!(code.as_deref(), Some("DRIVER_ERROR"));
                 assert_eq!(failed_index, Some(1));
                 assert!(body.is_some());
+            }
+            other => panic!("expected Worker, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn postgres_sqlstate_is_surfaced_in_the_message() {
+        let e = iii_sdk::errors::Error::Remote {
+            code: "invocation_failed".into(),
+            message: r#"handler error: {"code":"DRIVER_ERROR","driver":"postgres","message":"db error","inner_code":"42703"}"#.into(),
+            stacktrace: None,
+        };
+        match map_sdk_error(e) {
+            DbCallError::Worker {
+                message,
+                inner_code,
+                driver,
+                body,
+                ..
+            } => {
+                assert_eq!(message, "db error (SQLSTATE 42703)");
+                assert_eq!(inner_code.as_deref(), Some("42703"));
+                assert_eq!(driver.as_deref(), Some("postgres"));
+                // The raw body keeps everything for MIGRATION_FAILED.
+                assert_eq!(body.unwrap()["inner_code"], "42703");
+            }
+            other => panic!("expected Worker, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn non_postgres_inner_code_is_labeled_with_the_driver() {
+        let e = iii_sdk::errors::Error::Remote {
+            code: "invocation_failed".into(),
+            message: r#"handler error: {"code":"DRIVER_ERROR","driver":"sqlite","message":"constraint failed","inner_code":"1555"}"#.into(),
+            stacktrace: None,
+        };
+        match map_sdk_error(e) {
+            DbCallError::Worker { message, .. } => {
+                assert_eq!(message, "constraint failed (sqlite error code 1555)");
+            }
+            other => panic!("expected Worker, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn message_is_untouched_without_inner_code() {
+        let e = iii_sdk::errors::Error::Remote {
+            code: "invocation_failed".into(),
+            message: r#"handler error: {"code":"UNKNOWN_DB","message":"no such db"}"#.into(),
+            stacktrace: None,
+        };
+        match map_sdk_error(e) {
+            DbCallError::Worker {
+                message,
+                inner_code,
+                ..
+            } => {
+                assert_eq!(message, "no such db");
+                assert!(inner_code.is_none());
             }
             other => panic!("expected Worker, got {other:?}"),
         }

@@ -1,0 +1,6 @@
+[
+  { "table_name": "_iii_migrations", "index_name": "_iii_migrations_pkey", "definition": "CREATE UNIQUE INDEX _iii_migrations_pkey ON public._iii_migrations USING btree (name)" },
+  { "table_name": "events", "index_name": "events_pkey", "definition": "CREATE UNIQUE INDEX events_pkey ON public.events USING btree (id)" },
+  { "table_name": "reservations", "index_name": "idx_reservations_active", "definition": "CREATE INDEX idx_reservations_active ON public.reservations USING btree (event_id) WHERE (user_id IS NOT NULL)" },
+  { "table_name": "reservations", "index_name": "idx_reservations_lower", "definition": "CREATE INDEX idx_reservations_lower ON public.reservations USING btree (lower(status))" }
+]

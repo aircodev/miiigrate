@@ -59,7 +59,7 @@ time, including while `migrate::up` is failing.
   "pending":    [{ "name": "…", "checksum": "…" }],
   "mismatched": [{ "name": "…", "applied_checksum": "…", "file_checksum": "…", "applied_at": "…" }],
   "missing":    [{ "name": "…", "checksum": "…", "applied_at": "…" }],
-  "future_dated": ["…"]
+  "future_dated": [{ "name": "…", "applied": false, "hint": "pending: recreate it via migrate::create …" }]
 }
 ```
 
@@ -69,9 +69,10 @@ time, including while `migrate::up` is failing.
   `migrate::up` refuses to run while this list is non-empty.
 - `missing` — recorded as applied but the file no longer exists on disk.
 - `future_dated` — files on disk whose timestamp prefix is ahead of the wall
-  clock beyond a 5-minute skew tolerance: hand-written names. Harmless once
-  applied (`migrate::create` keeps new timestamps monotonic with them), but a
-  pending one should be renamed before apply.
+  clock beyond a 5-minute skew tolerance: hand-written names. Each entry says
+  whether the file is `applied` and carries an explicit `hint`: applied ones
+  are harmless (`migrate::create` keeps new timestamps monotonic with them),
+  pending ones should be re-scaffolded via `migrate::create` before apply.
 
 ## `migrate::create`
 
@@ -101,6 +102,75 @@ SQLite) and write a TypeScript definition file.
 One `export interface` per table, plus an aggregate `Database` type. The
 `_iii_migrations` tracking table is excluded. See [codegen.md](codegen.md)
 for the exact type mapping.
+
+## `migrate::check`
+
+Statically validate the migrations directory — "would `migrate::up`
+succeed?" — without executing any SQL. Read-only; the only network call is
+the tracking-table read, and it degrades gracefully.
+
+- **Payload**: `{}`
+- **Returns**:
+
+```json
+{
+  "ok": true,
+  "dir": "./migrations",
+  "pending_checked": [{ "name": "…", "ok": true, "statements": 3 }],
+  "invalid_names":   [{ "file": "notes.sql", "reason": "…" }],
+  "future_dated":    [{ "name": "…", "applied": false, "hint": "…" }],
+  "mismatched":      [],
+  "missing":         [],
+  "db_checked": true
+}
+```
+
+- Every pending file is parsed with the same splitter as `migrate::up`;
+  `pending_checked[].error` carries the exact message `up` would fail with
+  (unsplittable SQL, empty file).
+- Unlike `migrate::up`/`status`, an ill-named `.sql` file does not abort the
+  report — all problems are listed at once under `invalid_names`.
+- `ok` is false when anything would block or break `migrate::up`: an invalid
+  name, a broken pending file, or checksum drift. `future_dated` and
+  `missing` are warnings and do not flip it.
+- Works while the database worker is down: `db_checked: false`, drift lists
+  are then unknown (empty).
+
+## `migrate::schema`
+
+Read-only structured report of the live schema — the verification companion
+of `migrate::up`. Everything an agent or human needs to confirm what a
+migration actually did, without hand-writing `information_schema` queries.
+
+- **Payload**: `{}` or `{ "table": "users" }` (exact name; an unknown table
+  yields an empty `tables` list, not an error)
+- **Returns**:
+
+```json
+{
+  "db": "primary",
+  "dialect": "postgres",
+  "tables": [{
+    "name": "reservations",
+    "columns": [{ "name": "id", "data_type": "bigint", "nullable": false,
+                  "default": "nextval('…')", "position": 1 }],
+    "primary_key": ["id"],
+    "foreign_keys": [{ "name": "…_fkey", "columns": ["event_id"],
+                       "references_table": "events", "references_columns": ["id"],
+                       "on_delete": "CASCADE", "on_update": "NO ACTION" }],
+    "indexes":  [{ "name": "…", "unique": true, "columns": ["…"], "definition": "CREATE …" }],
+    "triggers": [{ "name": "…", "timing": "AFTER", "events": ["INSERT", "UPDATE"] }]
+  }],
+  "enums": [{ "name": "mood", "labels": ["happy", "sad", "curious"] }]
+}
+```
+
+- Columns come in ordinal (DDL) order with defaults; multi-column foreign
+  keys are paired column-by-column; `enums` is Postgres-only.
+- `indexes[].columns` is best-effort: empty for expression indexes — read
+  `definition` there. SQLite auto-indexes backing PRIMARY KEY / UNIQUE have
+  no `definition`.
+- The `_iii_migrations` tracking table is excluded.
 
 ## Checksums
 

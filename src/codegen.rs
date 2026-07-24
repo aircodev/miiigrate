@@ -335,14 +335,16 @@ fn ts_property(name: &str) -> String {
     }
 }
 
-fn str_field(row: &Map<String, Value>, key: &str) -> Result<String, String> {
+pub(crate) fn str_field(row: &Map<String, Value>, key: &str) -> Result<String, String> {
     row.get(key)
         .and_then(Value::as_str)
         .map(String::from)
         .ok_or_else(|| format!("introspection row missing string field `{key}`: {row:?}"))
 }
 
-fn int_field(row: &Map<String, Value>, key: &str) -> Option<i64> {
+/// Integer field tolerant of the wire format: int8/cardinal values may
+/// arrive as JSON strings through `database::query`.
+pub(crate) fn int_field(row: &Map<String, Value>, key: &str) -> Option<i64> {
     let v = row.get(key)?;
     v.as_i64()
         .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
