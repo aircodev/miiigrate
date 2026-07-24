@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.4 — 2026-07-24
 
 - README: how to pass payloads containing quotes to the iii CLI (read the
   JSON from a file with `--json "$(cat …)"`; key=value pairs for scalars) —
