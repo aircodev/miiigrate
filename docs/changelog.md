@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 — 2026-08-02
 
 - New function `migrate::baseline`: record migrations as applied WITHOUT
   executing their SQL — the primitive for adopting a database whose schema
