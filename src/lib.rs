@@ -7,12 +7,13 @@
 //! The worker registers under the name `miiigrate`; the functions it exposes
 //! live under the `migrate::` namespace (`migrate::up`, `migrate::status`,
 //! `migrate::check`, `migrate::create`, `migrate::codegen`,
-//! `migrate::schema`).
+//! `migrate::schema`, `migrate::baseline`, `migrate::adopt`).
 
 pub mod codegen;
 pub mod config;
 pub mod configuration;
 pub mod db;
+pub mod drizzle;
 pub mod error;
 pub mod handlers;
 pub mod migrations;

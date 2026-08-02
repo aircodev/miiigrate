@@ -56,6 +56,14 @@ pub enum MigrateError {
     #[serde(rename = "UNSUPPORTED_DIALECT")]
     #[error("dialect `{dialect}` is not supported in v1 (postgres and sqlite only)")]
     UnsupportedDialect { dialect: String },
+
+    #[serde(rename = "ADOPT_SOURCE_INVALID")]
+    #[error("cannot adopt from `{path}`: {reason}")]
+    AdoptSourceInvalid { path: String, reason: String },
+
+    #[serde(rename = "ADOPT_CONFLICT")]
+    #[error("adopt conflict on `{file}`: {reason}")]
+    AdoptConflict { file: String, reason: String },
 }
 
 impl From<MigrateError> for iii_sdk::errors::Error {

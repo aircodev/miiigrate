@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+- New function `migrate::baseline`: record migrations as applied WITHOUT
+  executing their SQL — the primitive for adopting a database whose schema
+  already exists (built by another tool or by hand). One atomic
+  `database::transaction`, same concurrency serialization as `migrate::up`,
+  idempotent, refuses on checksum drift.
+- New function `migrate::adopt` (`source: "drizzle"`): take over a
+  drizzle-kit project. Converts the drizzle folder into miiigrate's format —
+  names derived from the journal's `when` timestamps so history keeps its
+  real dates and order, contents copied byte-for-byte, source folder never
+  touched. `mark_applied: auto` mirrors `__drizzle_migrations` through the
+  baseline logic and verifies each recorded hash, reporting drift as
+  `hash_warnings`. The payload is discriminated on `source` so prisma and
+  friends can land later.
+- New error codes `ADOPT_SOURCE_INVALID` and `ADOPT_CONFLICT` (a divergent
+  conversion target is never overwritten).
+- Playground: `run-adopt.sh` — end-to-end drizzle takeover on SQLite
+  (simulated drizzle-migrated database, adopt, status, up of the remaining
+  pending file, idempotent re-run, hash-drift warning, mysql rejection).
+
 ## 0.1.4 — 2026-07-24
 
 - README: how to pass payloads containing quotes to the iii CLI (read the

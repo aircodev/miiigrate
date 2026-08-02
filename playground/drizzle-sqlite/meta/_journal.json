@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1753257600000,
+      "tag": "0000_create_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1753344000123,
+      "tag": "0001_add_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1753430400456,
+      "tag": "0002_add_scores",
+      "breakpoints": true
+    }
+  ]
+}

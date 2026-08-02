@@ -15,7 +15,11 @@ Planned, roughly in order:
   publish flow for external repos is documented.
 - **MySQL** — needs a `GET_LOCK`-based serialization strategy; rejected with
   `UNSUPPORTED_DIALECT` today.
-- **Baseline / squash** — adopt an existing database as migration zero.
+- **Squash** — flatten a long applied history into one baseline file for
+  fresh environments. (`migrate::baseline` and `migrate::adopt` shipped in
+  0.1.5; squash is the remaining piece.)
+- **`migrate::adopt` sources** — prisma (`prisma/migrations`), golang-migrate,
+  on the model of the drizzle adopter.
 
 ## Not planned
 

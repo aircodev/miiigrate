@@ -46,6 +46,66 @@ A failed migration rolls back atomically and the worker stays up, so
 `migrate::status` remains available for diagnosis. See
 [errors.md](errors.md) for the recovery steps.
 
+## Coming from drizzle
+
+A project that already uses drizzle-kit migrates in one call — on the
+database that drizzle already migrated **and** on fresh environments:
+
+```sh
+# 1. adopt: convert ./drizzle into ./migrations and mirror what drizzle
+#    already applied (their SQL is NOT re-executed)
+iii trigger migrate::adopt --json '{"source":"drizzle"}'
+#    -> { "converted": [...], "baselined": [...], "pending": [], "skipped": 0 }
+
+# 2. verify: everything applied, nothing pending, no drift
+iii trigger migrate::status --json '{}'
+
+# 3. generate the types that replace drizzle's schema.ts inference
+iii trigger migrate::codegen --json '{}'
+```
+
+- File names are derived from the drizzle journal's `when` timestamps, so
+  the adopted history keeps its real dates and order. Contents are copied
+  byte-for-byte (`--> statement-breakpoint` markers are comments the
+  splitter ignores).
+- The `./drizzle` folder is never modified. Once `migrate::status` is
+  clean, delete it along with `drizzle.config.ts` and the `drizzle-kit`
+  dependency; dropping the `drizzle.__drizzle_migrations` table is
+  optional.
+- On a **fresh** database (CI, new dev machine) the same adopted files are
+  simply pending: `migrate::up` executes them for real. One history, both
+  cases.
+- `hash_warnings` in the response means a file no longer matches what
+  drizzle recorded at apply time — the file on disk wins, but review the
+  diff before trusting it.
+- Runtime code that used drizzle-orm's query builder needs a separate
+  decision: either keep it (direct DB connection, outside the database
+  worker) or move to `database::query` typed by the generated
+  `db.types.ts`.
+
+From then on the daily workflow is the standard one: `migrate::create` →
+write SQL → `migrate::up` → `migrate::codegen`. You write `ALTER TABLE`
+statements yourself now — there is no TS-schema diffing anymore, and that
+is by design (plain SQL, reviewed in the diff).
+
+## Adopting a hand-built schema
+
+No drizzle, just a database that predates miiigrate: dump the schema into a
+single migration and baseline it.
+
+```sh
+iii trigger migrate::create --json '{"name":"baseline"}'
+# fill the file with the schema dump (pg_dump --schema-only, cleaned up)
+
+# on the existing database: record it as applied WITHOUT executing
+iii trigger migrate::baseline --json '{}'
+
+# fresh environments run it for real
+iii trigger migrate::up --json '{}'
+```
+
+Once baselined, the file is applied history: never edit it again.
+
 ## Recipes
 
 ### Add a table

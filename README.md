@@ -24,7 +24,7 @@ describe your schema exactly as it arrives over the wire.
   migrations/*.sql   db.types.ts
 ```
 
-The whole workflow is four functions, used in this order:
+The day-to-day workflow is four functions, used in this order:
 
 ```
 migrate::create ──▶ write your SQL ──▶ migrate::up ──▶ migrate::codegen
@@ -96,6 +96,22 @@ Three rules keep it simple and safe:
   `migrate::up` at startup; they serialize on a lock and losers report
   *skipped*, not *failed*.
 
+## Migrating from drizzle?
+
+One call converts the `./drizzle` folder into miiigrate's format and mirrors
+what drizzle already applied — without re-executing anything:
+
+```sh
+iii trigger migrate::adopt --json '{"source":"drizzle"}'
+iii trigger migrate::status --json '{}'   # should be clean
+```
+
+File names keep their real creation dates (derived from the drizzle
+journal), the source folder is never touched, and fresh environments simply
+`migrate::up` the same files. Databases that predate any migration tool use
+`migrate::baseline` instead. Full walkthrough:
+[docs/workflows.md](https://github.com/aircodev/miiigrate/blob/main/docs/workflows.md).
+
 ## Configuration
 
 ```yaml
@@ -123,7 +139,7 @@ The `config:` block is a first-boot seed; afterwards settings live in the
 
 | Page | What it covers |
 |---|---|
-| [Functions](https://github.com/aircodev/miiigrate/blob/main/docs/functions.md) | `migrate::up`, `status`, `create`, `codegen` — payloads and responses |
+| [Functions](https://github.com/aircodev/miiigrate/blob/main/docs/functions.md) | `migrate::up`, `status`, `create`, `codegen`, `check`, `schema`, `baseline`, `adopt` — payloads and responses |
 | [Configuration](https://github.com/aircodev/miiigrate/blob/main/docs/configuration.md) | Every key, defaults, seed vs runtime config |
 | [Workflows](https://github.com/aircodev/miiigrate/blob/main/docs/workflows.md) | Local dev, production `auto: true`, table and column recipes |
 | [Codegen](https://github.com/aircodev/miiigrate/blob/main/docs/codegen.md) | TypeScript type mapping, wire-format rules |
@@ -136,9 +152,11 @@ The `config:` block is a first-boot seed; afterwards settings live in the
 The [`playground/`](https://github.com/aircodev/miiigrate/tree/main/playground)
 directory boots a real engine plus database worker and runs the full scenario:
 [`run.sh`](https://github.com/aircodev/miiigrate/blob/main/playground/run.sh)
-(SQLite end-to-end) and
+(SQLite end-to-end),
 [`run-postgres.sh`](https://github.com/aircodev/miiigrate/blob/main/playground/run-postgres.sh)
-(Postgres 16, two concurrent instances proving lock serialization).
+(Postgres 16, two concurrent instances proving lock serialization), and
+[`run-adopt.sh`](https://github.com/aircodev/miiigrate/blob/main/playground/run-adopt.sh)
+(drizzle takeover: adopt, baseline, up of the remainder).
 
 ## License
 

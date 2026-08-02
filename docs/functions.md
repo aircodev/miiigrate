@@ -1,6 +1,6 @@
 # Functions
 
-miiigrate registers four functions on the engine. Call them with
+miiigrate registers eight functions on the engine. Call them with
 `iii trigger <function> --json '<payload>'` or `iii.trigger(...)` from any
 SDK. Full JSON Schemas are attached to each registration — retrieve them
 with `iii get function info <function>`.
@@ -9,6 +9,9 @@ with `iii get function info <function>`.
 migrate::create ──▶ write your SQL ──▶ migrate::up ──▶ migrate::codegen
                                             │
                         migrate::status ◀───┘  (read-only, anytime)
+
+migrate::adopt ──▶ take over another tool's history (drizzle)
+migrate::baseline ──▶ record as applied without executing
 ```
 
 ## `migrate::up`
@@ -171,6 +174,81 @@ migration actually did, without hand-writing `information_schema` queries.
   `definition` there. SQLite auto-indexes backing PRIMARY KEY / UNIQUE have
   no `definition`.
 - The `_iii_migrations` tracking table is excluded.
+
+## `migrate::baseline`
+
+Record migrations as applied **without executing their SQL**. The primitive
+for adopting a database whose schema already exists — built by another tool
+or by hand — where replaying the files would fail.
+
+- **Payload**: `{}` (every pending migration) or
+  `{ "names": ["20260719143000_baseline.sql"] }` (a subset; each name must
+  exist in the migrations directory)
+- **Returns**: `{ "baselined": ["<file names in order>"], "skipped": <n> }`
+
+Behaviour:
+
+- All tracking inserts run in one atomic `database::transaction`,
+  serialized against concurrent migrators exactly like `migrate::up`
+  (advisory lock on Postgres, `BEGIN IMMEDIATE` on SQLite).
+- Idempotent: a file already tracked with the same checksum counts in
+  `skipped`; a different checksum is `CHECKSUM_MISMATCH` and nothing is
+  recorded.
+- Typical use: dump the existing schema into one
+  `migrate::create`-scaffolded file, then baseline it on the already-built
+  database. Fresh environments simply run `migrate::up`, which executes the
+  same file for real.
+
+## `migrate::adopt`
+
+Take over the migration history of another tool. `source: "drizzle"` is
+supported today; the discriminated payload leaves room for other sources
+(prisma, …) later.
+
+- **Payload**: `{ "source": "drizzle" }`, optionally with
+  `"from": "./drizzle"` (drizzle-kit's `out` directory) and
+  `"mark_applied": "auto" | "all" | "none"` (default `auto`)
+- **Returns**:
+
+```json
+{
+  "converted": ["20240701135820_loud_wolverine.sql"],
+  "baselined": ["20240701135820_loud_wolverine.sql"],
+  "pending":   [],
+  "skipped":   0,
+  "hash_warnings": [{ "name": "…", "tag": "0000_…", "recorded_hash": "…", "file_hash": "…" }]
+}
+```
+
+Behaviour:
+
+- Reads `<from>/meta/_journal.json` — the journal, not the file names, is
+  the source of truth for order and dates. Each entry's `when` becomes the
+  converted file's `YYYYMMDDHHMMSS` prefix (bumped by one second on
+  same-second collisions), so the adopted history keeps its real creation
+  times and its order.
+- File contents are copied byte-for-byte into the migrations directory; the
+  `--> statement-breakpoint` markers are line comments the splitter already
+  ignores. The drizzle folder and its `meta/` snapshots are **never
+  modified** — delete them yourself once satisfied.
+- Idempotent: a re-run skips targets that already exist with identical
+  content; a divergent target is `ADOPT_CONFLICT`, never overwritten.
+- The journal dialect must match the target database
+  (`ADOPT_SOURCE_INVALID` otherwise); mysql journals are
+  `UNSUPPORTED_DIALECT`.
+- `mark_applied: "auto"` reads drizzle's own tracking table
+  (`drizzle.__drizzle_migrations` on Postgres, `__drizzle_migrations` on
+  SQLite): entries drizzle recorded as applied are baselined — their SQL is
+  not executed — and the rest stays pending for `migrate::up`. A missing
+  table means a fresh database: everything stays pending. Each matched
+  row's `hash` is compared to the adopted file's SHA-256; drift is reported
+  under `hash_warnings` (and logged) but does not fail the adopt — the
+  files on disk are what the repository says is true.
+- `"all"` baselines every converted file (schema known up to date, e.g. the
+  drizzle table was already dropped); `"none"` only converts files.
+- After adopting: `migrate::status` should show a clean state, and the
+  drizzle dependency (`drizzle-kit`, `drizzle.config.ts`) can be removed.
+  Dropping the `__drizzle_migrations` table is optional.
 
 ## Checksums
 

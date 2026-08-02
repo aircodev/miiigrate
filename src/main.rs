@@ -7,7 +7,7 @@ use iii_sdk::{register_worker, InitOptions, RegisterFunction};
 use miiigrate::config::WorkerConfig;
 use miiigrate::configuration;
 use miiigrate::error::MigrateError;
-use miiigrate::handlers::{check, codegen, create, schema, status, up, AppState};
+use miiigrate::handlers::{adopt, baseline, check, codegen, create, schema, status, up, AppState};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -202,11 +202,54 @@ async fn main() -> Result<()> {
         );
     }
 
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::baseline",
+            RegisterFunction::new_async(move |req: baseline::BaselineReq| {
+                let st = st.clone();
+                async move {
+                    baseline::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Record migrations as applied WITHOUT executing their SQL — for \
+                 adopting a database whose schema already exists (built by another \
+                 tool or by hand). Default: every pending migration; pass `names` \
+                 to baseline a subset. Idempotent; refuses on checksum drift.",
+            ),
+        );
+    }
+    {
+        let st = state.clone();
+        iii.register_function(
+            "migrate::adopt",
+            RegisterFunction::new_async(move |req: adopt::AdoptReq| {
+                let st = st.clone();
+                async move {
+                    adopt::handle(&st, req)
+                        .await
+                        .map_err(iii_sdk::errors::Error::from)
+                }
+            })
+            .description(
+                "Adopt another tool's migration history (`source: \"drizzle\"`). \
+                 Converts the drizzle files into the migrations directory (names \
+                 derived from the journal, source folder untouched), then records \
+                 what drizzle already applied via the baseline logic — verifying \
+                 recorded hashes and reporting drift as warnings. The rest stays \
+                 pending for migrate::up.",
+            ),
+        );
+    }
+
     if auto {
         run_auto_migration(&state).await;
     }
 
-    tracing::info!("miiigrate worker registered 6 functions, waiting for invocations");
+    tracing::info!("miiigrate worker registered 8 functions, waiting for invocations");
     wait_for_shutdown_signal().await?;
     tracing::info!("miiigrate worker shutting down");
     iii.shutdown_async().await;

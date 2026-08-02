@@ -6,7 +6,7 @@ these pages hold the details.
 
 | Page | What it covers |
 |---|---|
-| [functions.md](functions.md) | The four `migrate::*` functions — payloads, responses, behaviour |
+| [functions.md](functions.md) | The eight `migrate::*` functions — payloads, responses, behaviour |
 | [configuration.md](configuration.md) | Every config key, defaults, seed vs runtime configuration |
 | [workflows.md](workflows.md) | Local development, production `auto: true`, table and column recipes |
 | [codegen.md](codegen.md) | TypeScript type mapping and wire-format rules |

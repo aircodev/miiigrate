@@ -1,5 +1,7 @@
 //! Function handlers for the `migrate::*` namespace.
 
+pub mod adopt;
+pub mod baseline;
 pub mod check;
 pub mod codegen;
 pub mod create;

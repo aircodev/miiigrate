@@ -12,7 +12,9 @@ Every handler error body carries a stable `code` field plus context fields.
 | `DIR_NOT_FOUND` | The `dir` folder does not exist. | Only `migrate::create` creates the directory; run it once, or create the folder. |
 | `INVALID_MIGRATION_NAME` | A `.sql` file does not match `YYYYMMDDHHMMSS_slug.sql`, or a `create` slug is not `[A-Za-z0-9_-]+`. | Rename the file or fix the slug. |
 | `DATABASE_WORKER_UNAVAILABLE` | The `database` worker is not registered on the engine, or the invocation timed out. | `iii worker add database`, check the engine, retry. |
-| `UNSUPPORTED_DIALECT` | The target database is neither Postgres nor SQLite (e.g. MySQL). | Point `db` at a supported database. |
+| `UNSUPPORTED_DIALECT` | The target database is neither Postgres nor SQLite (e.g. MySQL) — or an adopted journal declares such a dialect. | Point `db` at a supported database. |
+| `ADOPT_SOURCE_INVALID` | `migrate::adopt` could not use the source folder: no `meta/_journal.json`, malformed journal, a journal entry without its `.sql` file, an empty journal, or a journal dialect that does not match the target database. | Check `from` points at drizzle-kit's `out` directory and that the folder is complete and matches the database. |
+| `ADOPT_CONFLICT` | A converted file already exists in the migrations directory with different content. Nothing is overwritten. | Move the conflicting file away (or clean the migrations directory) and re-run `migrate::adopt`. |
 
 ## How errors reach a caller
 

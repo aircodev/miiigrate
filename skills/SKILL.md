@@ -60,6 +60,16 @@ migration as skipped, not failed.
 - You need to verify what a migration actually did — `migrate::schema`
   reports ordered columns, primary keys, foreign keys, indexes, and
   triggers; never hand-write `information_schema` queries for that.
+- The project already uses drizzle (`drizzle.config.ts`, a `drizzle/`
+  folder with `meta/_journal.json`) — run `migrate::adopt` with
+  `{ "source": "drizzle" }` instead of re-creating the schema by hand. It
+  converts the files, keeps their history, and mirrors what drizzle already
+  applied without re-executing anything.
+- The database schema already exists but was never migrated by miiigrate
+  (built by hand or by another tool) — scaffold one baseline file with the
+  schema dump, then `migrate::baseline` records it as applied WITHOUT
+  executing it. NEVER let `migrate::up` replay DDL against a schema that
+  already exists.
 - TypeScript code reads rows from `database::query` and needs types that
   match the JSON wire format (`migrate::codegen`).
 - A `migrate::up` run failed and you need the failing file and statement
@@ -102,6 +112,14 @@ migration as skipped, not failed.
   (ordered columns with defaults, primary keys, foreign keys, indexes,
   triggers, Postgres enums); payload `{}` or `{ table: "users" }`. Use it
   to verify a migration's effect instead of raw `information_schema` SQL.
+- `migrate::baseline` — record migrations as applied WITHOUT executing
+  their SQL; payload `{}` (all pending) or `{ names: [...] }`. For adopting
+  an already-built schema. Idempotent; refuses on checksum drift.
+- `migrate::adopt` — take over another tool's history; payload
+  `{ source: "drizzle", from?: "./drizzle", mark_applied?: "auto"|"all"|"none" }`.
+  Converts the drizzle folder (source never modified), baselines what
+  drizzle already applied, verifies recorded hashes (`hash_warnings`).
+  After a clean `migrate::status`, the drizzle dependency can be removed.
 
 Configuration (`db`, `dir`, `auto`, `types_out`, `codegen_on_up`, `dialect`)
 lives in the `configuration` worker under id `miiigrate` and is read once at

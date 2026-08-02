@@ -27,7 +27,6 @@ use crate::db::{self, DbCallError, TxStatement};
 use crate::error::MigrateError;
 use crate::migrations::{self, MigrationFile};
 use crate::splitter::split_statements;
-use crate::TRACKING_TABLE;
 
 /// Advisory lock key: first 8 bytes (big-endian) of SHA-256("iii_miiigrate"),
 /// as a signed 64-bit value for `pg_advisory_xact_lock(bigint)`. Constant
@@ -58,35 +57,6 @@ pub struct UpResp {
     /// applied migration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub types_path: Option<String>,
-}
-
-/// Dialect-specific DDL for the tracking table. Idempotent.
-fn create_tracking_table_sql(dialect: Dialect) -> String {
-    match dialect {
-        Dialect::Postgres => format!(
-            "CREATE TABLE IF NOT EXISTS {TRACKING_TABLE} (\
-             name text PRIMARY KEY, \
-             checksum text NOT NULL, \
-             applied_at timestamptz NOT NULL DEFAULT now())"
-        ),
-        Dialect::Sqlite => format!(
-            "CREATE TABLE IF NOT EXISTS {TRACKING_TABLE} (\
-             name TEXT PRIMARY KEY, \
-             checksum TEXT NOT NULL, \
-             applied_at TEXT NOT NULL DEFAULT (datetime('now')))"
-        ),
-    }
-}
-
-fn tracking_insert_sql(dialect: Dialect) -> String {
-    match dialect {
-        Dialect::Postgres => format!(
-            "INSERT INTO {TRACKING_TABLE} (name, checksum, applied_at) VALUES ($1, $2, now())"
-        ),
-        Dialect::Sqlite => format!(
-            "INSERT INTO {TRACKING_TABLE} (name, checksum, applied_at) VALUES (?, ?, datetime('now'))"
-        ),
-    }
 }
 
 /// Build the transaction batch for one migration file. Returns the batch and
@@ -127,7 +97,7 @@ fn build_batch(
         batch.push(TxStatement::new(stmt));
     }
     batch.push(TxStatement::with_params(
-        tracking_insert_sql(dialect),
+        tracking::insert_sql(dialect),
         vec![json!(file.name), json!(file.checksum)],
     ));
     Ok((batch, offset))
@@ -138,25 +108,8 @@ pub async fn handle(state: &AppState, _req: UpReq) -> Result<UpResp, MigrateErro
     let dialect = state.dialect().await?;
     let files = migrations::list_migrations(Path::new(&state.config.dir))?;
 
-    // Create the tracking table before first read. The DDL is idempotent,
-    // but two migrators racing on `CREATE TABLE IF NOT EXISTS` can still
-    // collide inside Postgres (duplicate key on pg_type/pg_class) — if the
-    // statement fails and the table exists anyway, the goal is met.
-    if let Err(e) = db::execute(
-        &state.iii,
-        &state.config.db,
-        &create_tracking_table_sql(dialect),
-        vec![],
-    )
-    .await
-    {
-        if !tracking::table_exists(state).await.unwrap_or(false) {
-            return Err(e.into_migrate_error());
-        }
-        tracing::debug!(
-            "tracking-table DDL raced a concurrent migrator; table exists — continuing"
-        );
-    }
+    // Create the tracking table before first read.
+    tracking::ensure_table(state).await?;
 
     let applied_rows = tracking::fetch_applied(state).await?;
 
